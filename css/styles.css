@@ -66,6 +66,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 @media (max-width: 980px) {
   .layout { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; }
 }
+.col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
 .card-title { font-size: 15px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 12px; }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -250,8 +251,7 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ------------------------------------------------------------ conexiones */
-.conn { margin: 16px auto 0; max-width: 440px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
-.conn h3 { font-size: 14px; margin-bottom: 8px; }
+.conn { max-width: 520px; margin: 0 auto; }
 .seg { border: 0; padding: 0; margin: 0 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .seg legend { font-size: 12px; color: var(--muted); margin-bottom: 4px; padding: 0; }
 .seg label { display: inline-flex; align-items: center; gap: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 13.5px; }
@@ -326,3 +326,39 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ------------------------------------------------------------ KYK-13 */
+.kyk-wrap { max-width: 520px; margin: 0 auto; }
+.kyk {
+  background: linear-gradient(165deg, #3c4128, #2a2e1b 60%, #20230f); border: 2px solid #12140a;
+  border-radius: 12px; padding: 12px 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 6px 18px rgba(0,0,0,.4);
+}
+.kyk-plate { font: 700 10px var(--mono); letter-spacing: 1px; color: #c9cdb2; background: rgba(0,0,0,.3); padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
+.kyk-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: flex-end; }
+.kyk-row.bottom { margin-top: 12px; align-items: center; }
+.kyk-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kyk-label { font: 700 10px var(--mono); color: #d7dbc2; letter-spacing: 1px; }
+.kyk-switch, .kyk-addr { display: flex; gap: 4px; flex-wrap: wrap; }
+.kyk-switch button, .kyk-addr button {
+  background: linear-gradient(#45473b, #25261f); border: 1px solid #0f100b; border-radius: 6px; color: #eef0e2;
+  font: 700 12px var(--mono); padding: 7px 9px; min-width: 34px; touch-action: manipulation;
+}
+.kyk-switch button.active, .kyk-addr button.active { background: linear-gradient(#d9a521, #9c7410); color: #1b1503; }
+.kyk-switch button.danger { color: #ffb0a8; }
+.kyk-switch button.danger.active { background: linear-gradient(#c0392b, #7d1f16); color: #fff; }
+.kyk-lamp-wrap { display: flex; align-items: center; gap: 6px; }
+.kyk-lamp { width: 16px; height: 16px; border-radius: 50%; background: #3a2a10; border: 2px solid #111; }
+.kyk-lamp.on { background: #ffcf4a; box-shadow: 0 0 12px #ffcf4a; }
+.kyk-init {
+  margin-left: auto; background: linear-gradient(#5a5d4c, #2d2f25); border: 2px solid #0f100b; border-radius: 50px;
+  color: #fff; font: 800 12px var(--mono); padding: 10px 18px; touch-action: manipulation;
+}
+.kyk-init:active { transform: translateY(2px); }
+.kyk-msg { min-height: 1.4em; margin: 8px 2px; font-size: 13.5px; color: var(--muted); }
+.kyk-msg.ok { color: var(--ok); }
+.kyk-msg.bad { color: var(--warn); }
+.kyk-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.kyk-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.kyk-table td { padding: 4px 6px; border-bottom: 1px solid #1b232c; }
+.kyk-table tr.sel td { background: rgba(240,180,41,.08); }
+.kyk-table .empty { color: var(--muted); }

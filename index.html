@@ -106,6 +106,7 @@
       </div>
     </section>
 
+    <div class="col">
     <!-- ============================== SKL ============================== -->
     <section class="card device-card" aria-labelledby="skl-title">
       <h2 id="skl-title" class="card-title">SKL AN/PYQ-10</h2>
@@ -117,18 +118,65 @@
           <button type="button" id="skl-power" class="btn-power" aria-label="Encender o apagar el SKL">⏻</button>
         </div>
       </div>
+    </section>
 
-      <div class="conn" aria-labelledby="conn-title">
-        <h3 id="conn-title">Conexiones y accesorios</h3>
+    <!-- ============================== KYK-13 ============================== -->
+    <section class="card device-card" aria-labelledby="kyk-title">
+      <h2 id="kyk-title" class="card-title">KYK-13 (dispositivo de llenado DS-102)</h2>
+      <div class="kyk-wrap">
+        <div class="kyk">
+          <div class="kyk-plate">KYK-13 · ELECTRONIC TRANSFER DEVICE</div>
+          <div class="kyk-row">
+            <div class="kyk-group">
+              <span class="kyk-label">FUNCIÓN</span>
+              <div class="kyk-switch" role="radiogroup" aria-label="Interruptor de función del KYK-13">
+                <button type="button" data-kmode="ZALL" class="danger">Z ALL</button>
+                <button type="button" data-kmode="OFF">OFF / CHECK</button>
+                <button type="button" data-kmode="ON">ON</button>
+              </div>
+            </div>
+            <div class="kyk-group">
+              <span class="kyk-label">DIRECCIÓN</span>
+              <div class="kyk-addr" role="radiogroup" aria-label="Selector de dirección del KYK-13">
+                <button type="button" data-kaddr="1">1</button><button type="button" data-kaddr="2">2</button>
+                <button type="button" data-kaddr="3">3</button><button type="button" data-kaddr="4">4</button>
+                <button type="button" data-kaddr="5">5</button><button type="button" data-kaddr="6">6</button>
+              </div>
+            </div>
+          </div>
+          <div class="kyk-row bottom">
+            <div class="kyk-lamp-wrap"><span class="kyk-lamp" id="kyk-lamp"></span><span class="kyk-label">PARIDAD</span></div>
+            <div class="cik-slot" id="kyk-fill"><span class="led"></span>J1 FILL</div>
+            <button type="button" id="kyk-init" class="kyk-init">INICIAR</button>
+          </div>
+        </div>
+        <p class="kyk-msg" id="kyk-msg" aria-live="polite"></p>
+        <details class="guide" open>
+          <summary>Hoja de claves del custodio</summary>
+          <table class="kyk-table"><thead><tr><th>Pos.</th><th>Clave</th><th>Tipo</th><th>Uso</th></tr></thead><tbody id="kyk-sheet"></tbody></table>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============================== CONEXIONES ============================== -->
+    <section class="card" aria-labelledby="conn-title">
+      <h2 id="conn-title" class="card-title">Conexiones y accesorios</h2>
+      <div class="conn">
         <fieldset class="seg">
           <legend>Antena de la radio</legend>
           <label><input type="radio" name="antenna" value="NONE" checked> Ninguna</label>
           <label><input type="radio" name="antenna" value="WHIP"> Látigo VHF/UHF</label>
           <label><input type="radio" name="antenna" value="SATCOM"> SATCOM</label>
         </fieldset>
+        <fieldset class="seg">
+          <legend>Conector FILL de la radio cableado a</legend>
+          <label><input type="radio" name="filldev" value="NONE" checked> Nada</label>
+          <label><input type="radio" name="filldev" value="SKL"> SKL</label>
+          <label><input type="radio" name="filldev" value="KYK13"> KYK-13</label>
+        </fieldset>
         <div class="toggles">
+          <label class="switch"><input type="checkbox" id="conn-sklkyk"> Cable SKL ↔ KYK-13</label>
           <label class="switch"><input type="checkbox" id="conn-handset"> Microteléfono (AUDIO)</label>
-          <label class="switch"><input type="checkbox" id="conn-fill"> Cable de llenado SKL ↔ radio</label>
           <label class="switch"><input type="checkbox" id="conn-cik"> CIK insertado en el SKL</label>
         </div>
         <div class="battery">
@@ -139,6 +187,7 @@
         </div>
       </div>
     </section>
+    </div>
 
     <!-- ============================== EJERCICIOS ============================== -->
     <section class="card" aria-labelledby="sc-title">
@@ -166,6 +215,9 @@
           <li><b>▲▼</b> moverse · <b>ENT</b> aceptar · <b>CLR</b> volver/borrar · <b>◄►</b> cambiar opción.</li>
           <li><b>PRE + / PRE −</b> cambiar de preset · un número + ENT va directo a ese preset.</li>
           <li><b>CT/PT</b> alterna cifrado / claro · <b>MODE</b> cambia de modo · <b>ZERO</b> borra todas las claves.</li>
+          <li><b>Modo cripto</b> (en el preset, con CIFRADO = CT): <b>VINSON</b> (voz 16 kbps, canales de 25 kHz) o <b>ANDVT</b> (voz 2,4 kbps, obligatorio en SATCOM de 5 kHz). La TEK debe ser del mismo algoritmo.</li>
+          <li><b>SATCOM dedicado</b>: FREC TX = subida (292–318 MHz), FREC RX = bajada (243–270 MHz), canal 5K/25K. <b>SATCOM DAMA</b>: satélite, red, dirección de terminal y PGM &gt; ACCESO DAMA antes de transmitir.</li>
+          <li><b>KYK-13</b>: OFF/CHECK + INICIAR comprueba la posición (la lámpara destella si hay clave) · ON + INICIAR transfiere la posición a la radio en LD · Z ALL borra todo.</li>
           <li>Teclado del ordenador: dígitos, punto, Intro = ENT, Retroceso/Esc = CLR, flechas, P = PGM, O = OPT, M = MODE, C = CT/PT, +/− = preset, barra espaciadora = PTT.</li>
         </ul>
       </details>
@@ -182,6 +234,7 @@
   <script src="js/core.js"></script>
   <script src="js/radio.js"></script>
   <script src="js/skl.js"></script>
+  <script src="js/kyk13.js"></script>
   <script src="js/net.js"></script>
   <script src="js/scenarios.js"></script>
   <script src="js/audio.js"></script>

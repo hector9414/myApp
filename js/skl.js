@@ -22,11 +22,12 @@
     KEK: 'Clave de cifrado de claves (OTAR)',
   };
 
-  function makeKey(now, tag, type, desc, effDays, expDays) {
+  function makeKey(now, tag, type, desc, effDays, expDays, alg) {
     return {
       id: tag,
       tag,
       type,
+      alg: type === 'TEK' ? alg || 'VINSON' : null,
       desc,
       eff: now + effDays * DAY,
       exp: now + expDays * DAY,
@@ -43,15 +44,28 @@
       makeKey(now, 'BRAVO-TEK-02', 'TEK', 'Red de maniobra SINCGARS', -5, 25),
       makeKey(now, 'SINC-HOP-12', 'TSK', 'TRANSEC / conjunto de saltos SINCGARS', -5, 25),
       makeKey(now, 'HQ-WOD-NOV', 'WOD', 'Palabra del día HAVE QUICK II', -3, 27),
-      makeKey(now, 'SAT-TEK-07', 'TEK', 'Red SATCOM táctica', -7, 23),
+      makeKey(now, 'SAT-TEK-07', 'TEK', 'Red SATCOM de reserva (ANDVT)', -7, 23, 'ANDVT'),
       makeKey(now, 'KEK-RED-01', 'KEK', 'Cifrado de claves para OTAR', -30, 60),
     ];
   }
 
-  /** Puente entre el SKL y la radio: comprueba el cable antes de entregar la clave. */
-  SIM.makeFillBridge = (getConn, radio) => (key, protocol) => {
-    if (!getConn().fillCable) return { ok: false, reason: 'No hay cable de llenado conectado entre el SKL y la radio' };
-    return radio.receiveFill(key, protocol);
+  const TARGETS = { RADIO: 'AN/PRC-117F', KYK13: 'KYK-13' };
+
+  /**
+   * Puente entre el SKL y el equipo destino: comprueba el cableado antes de
+   * entregar la clave. conn.fillDevice indica qué hay en el conector FILL de la
+   * radio ('NONE' | 'SKL' | 'KYK13'); conn.sklKyk, si hay cable SKL <-> KYK-13.
+   */
+  SIM.makeFillBridge = (getConn, radio, kyk) => (key, protocol, target = 'RADIO') => {
+    const c = getConn();
+    if (target === 'KYK13') {
+      if (!kyk) return { ok: false, reason: 'No hay KYK-13 disponible' };
+      if (!c.sklKyk) return { ok: false, reason: 'No hay cable de llenado entre el SKL y el KYK-13' };
+      if (protocol !== 'DS-102') return { ok: false, reason: 'El KYK-13 solo admite el protocolo DS-102' };
+      return kyk.receive(key);
+    }
+    if (c.fillDevice !== 'SKL') return { ok: false, reason: 'El conector FILL de la radio no está cableado al SKL' };
+    return radio.receiveFill(key, protocol, 'SKL');
   };
 
   class SKL extends SIM.Device {
@@ -79,6 +93,7 @@
       this.audit = [];
       this.selected = [];
       this.protocol = 'DS-101';
+      this.target = 'RADIO';
       this.detailId = null;
       this.issue = null;
       this.message = null;
@@ -236,9 +251,13 @@
       }
     }
 
+    a_setTarget(t) {
+      if (TARGETS[t]) this.target = t;
+    }
+
     a_issueGo() {
       if (!this.selected.length) return;
-      this.issue = { queue: this.selected.slice(), idx: 0, results: [] };
+      this.issue = { queue: this.selected.slice(), idx: 0, results: [], target: this.target };
       this.nav('ISSUING');
       this.issueStep();
     }
@@ -258,22 +277,24 @@
         if (!key) r = { ok: false, reason: 'Clave inexistente' };
         else if (this.isExpired(key)) r = { ok: false, reason: 'Clave CADUCADA: emisión bloqueada por el SKL' };
         else if (this.isPending(key)) r = { ok: false, reason: 'Clave aún no vigente' };
-        else r = this.env.fill(key, this.protocol);
+        else r = this.env.fill(key, this.protocol, job.target);
         if (key && r.ok) key.issued++;
-        job.results.push({ tag: key ? key.tag : job.queue[job.idx], ok: r.ok, reason: r.reason, slot: r.slot, overwritten: r.overwritten });
-        this.log('EMISION (FILL)', `${key ? key.tag : '?'} -> AN/PRC-117F ${r.ok ? 'slot ' + SIM.pad(r.slot) : ''} [${this.protocol}]${r.ok ? '' : ' : ' + r.reason}`, r.ok);
+        const where = job.target === 'KYK13' ? 'posición ' + r.slot : 'slot ' + SIM.pad(r.slot);
+        job.results.push({ tag: key ? key.tag : job.queue[job.idx], ok: r.ok, reason: r.reason, slot: r.slot, where, overwritten: r.overwritten });
+        this.log('EMISION (FILL)', `${key ? key.tag : '?'} -> ${TARGETS[job.target]} ${r.ok ? where : ''} [${this.protocol}]${r.ok ? '' : ' : ' + r.reason}`, r.ok);
         job.idx++;
         this.changed();
         this.issueStep();
       });
     }
 
-    a_newKey(type) {
+    a_newKey(arg) {
+      const [type, alg] = String(arg).split(':');
       if (!KEY_TYPES[type]) return;
       let tag;
       do tag = `ENT-${type}-${String(Math.floor(this.env.random() * 900) + 100)}`;
       while (this.keyById(tag));
-      const k = makeKey(this.env.now(), tag, type, 'Clave generada para entrenamiento', 0, 30);
+      const k = makeKey(this.env.now(), tag, type, 'Clave generada para entrenamiento', 0, 30, alg);
       this.keys.push(k);
       this.log('GENERACION', `${tag} (${type})`);
       this.detailId = tag;
@@ -312,13 +333,15 @@
 
     // ---------------------------------------------------------------- persistencia
     serialize() {
-      return { keys: this.keys, audit: this.audit.slice(0, 100), protocol: this.protocol, locked: this.locked, attempts: this.attempts };
+      return { keys: this.keys, audit: this.audit.slice(0, 100), protocol: this.protocol, target: this.target, locked: this.locked, attempts: this.attempts };
     }
     load(o) {
       if (!o || typeof o !== 'object') return;
       if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.type);
       if (Array.isArray(o.audit)) this.audit = o.audit.filter((a) => a && a.action);
       if (o.protocol === 'DS-101' || o.protocol === 'DS-102') this.protocol = o.protocol;
+      if (TARGETS[o.target]) this.target = o.target;
+      this.keys.forEach((k) => { if (k.type === 'TEK' && !k.alg) k.alg = 'VINSON'; });
       if (typeof o.locked === 'boolean') this.locked = o.locked;
       if (Number.isInteger(o.attempts)) this.attempts = o.attempts;
       this.changed();
@@ -328,5 +351,6 @@
   SKL.TRAINING_PIN = TRAINING_PIN;
   SKL.KEY_TYPES = KEY_TYPES;
   SKL.defaultKeys = defaultKeys;
+  SKL.TARGETS = TARGETS;
   SIM.SKL = SKL;
 })(typeof window !== 'undefined' ? window : globalThis);

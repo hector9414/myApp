@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-for (const f of ['core', 'radio', 'skl', 'net', 'scenarios']) require(path.join(__dirname, '..', 'js', f + '.js'));
+for (const f of ['core', 'radio', 'skl', 'kyk13', 'net', 'scenarios']) require(path.join(__dirname, '..', 'js', f + '.js'));
 const SIM = globalThis.SIM;
 
 /** Reloj y temporizadores falsos y deterministas. */
@@ -34,15 +34,16 @@ function fakeClock() {
 
 function setup() {
   const clock = fakeClock();
-  const conn = { antenna: 'WHIP', handset: true, fillCable: true, cik: true };
+  const conn = { antenna: 'WHIP', handset: true, fillDevice: 'SKL', sklKyk: false, cik: true };
   const radio = new SIM.Radio(Object.assign({ getConn: () => conn }, clock));
-  const skl = new SIM.SKL(Object.assign({ cik: () => conn.cik, fill: SIM.makeFillBridge(() => conn, radio) }, clock));
+  const kyk = new SIM.KYK13(Object.assign({ fill: SIM.makeKykBridge(() => conn, radio) }, clock));
+  const skl = new SIM.SKL(Object.assign({ cik: () => conn.cik, fill: SIM.makeFillBridge(() => conn, radio, kyk) }, clock));
   const net = new SIM.Net(radio, Object.assign({ myCall: () => 'Lobo 2' }, clock));
   const logs = [];
   const hints = [];
   net.on('log', (l) => logs.push(l));
   net.on('hint', (h) => hints.push(h));
-  return { clock, conn, radio, skl, net, logs, hints };
+  return { clock, conn, radio, skl, kyk, net, logs, hints };
 }
 
 const keys = (radio, seq) => seq.forEach((k) => radio.press(k));
@@ -210,16 +211,16 @@ test('carga con SKL: requiere cable y posición LD; bloquea claves caducadas', (
   assert.equal(t.skl.issue.results[0].ok, false);
   assert.match(t.skl.issue.results[0].reason, /LD/);
   // sin cable -> falla
-  t.conn.fillCable = false;
+  t.conn.fillDevice = 'NONE';
   t.radio.setKnob('LD');
   t.skl.act('go', 'ISSUE');
   t.skl.act('toggleSelect', 'ALFA-TEK-01');
   t.skl.act('issueReview');
   t.skl.act('issueGo');
   t.clock.advance(2000);
-  assert.match(t.skl.issue.results[0].reason, /cable/);
+  assert.match(t.skl.issue.results[0].reason, /no está cableado al SKL/);
   // caducada -> bloqueada
-  t.conn.fillCable = true;
+  t.conn.fillDevice = 'SKL';
   const exp = fill(t, 'ALFA-TEK-00', 1);
   assert.equal(exp.ok, false);
   assert.match(exp.reason, /CADUCADA/);
@@ -250,14 +251,13 @@ test('red cifrada: clave correcta, potencia y alcance', () => {
   assert.equal(t.net.contacts.CONDOR, 1);
 });
 
-test('SINCGARS, HAVE QUICK y SATCOM', () => {
+test('SINCGARS y HAVE QUICK', () => {
   const t = setup();
   loginSkl(t);
   powerOn(t, 'LD');
   fill(t, 'BRAVO-TEK-02', 2);
   fill(t, 'SINC-HOP-12', 3);
   fill(t, 'HQ-WOD-NOV', 4);
-  fill(t, 'SAT-TEK-07', 5);
   t.radio.setKnob('ON');
 
   program(t, 3, [['mode', 'SINCGARS'], ['netId', '345'], ['transecSlot', 3], ['crypto', 'CT'], ['keySlot', 2]]);
@@ -275,14 +275,7 @@ test('SINCGARS, HAVE QUICK y SATCOM', () => {
   talk(t);
   assert.equal(t.net.contacts.AGUILA, 1);
 
-  program(t, 5, [['mode', 'SATCOM'], ['satChannel', '25'], ['crypto', 'CT'], ['keySlot', 5]]);
-  t.radio.cur = 5;
-  talk(t);
-  assert.match(t.hints.at(-1), /antena SATCOM/);
-  t.conn.antenna = 'SATCOM';
-  talk(t);
-  assert.equal(t.net.contacts.CENTAURO, 1);
-  for (const id of ['sincgars', 'hq', 'satcom']) {
+  for (const id of ['sincgars', 'hq']) {
     const res = SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === id), t);
     assert.ok(res.every((c) => c.ok), id + ': ' + JSON.stringify(res));
   }
@@ -300,6 +293,7 @@ test('zeroize por perilla Z con retorno por resorte, y zeroize del SKL', () => {
   assert.equal(t.radio.knob, 'ON');
   t.skl.act('zeroize');
   assert.equal(t.skl.keys.length, 0);
+  t.kyk.setMode('ZALL');
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'zeroize'), t).every((c) => c.ok));
 });
 
@@ -330,4 +324,141 @@ test('serialización de la radio y del SKL', () => {
   t.skl.keys = t.skl.keys.slice(0, 2);
   t2.skl.load(JSON.parse(JSON.stringify(t.skl.serialize())));
   assert.equal(t2.skl.keys.length, 2);
+});
+
+function kykToRadio(t, pos, slot) {
+  if (t.radio.knob !== 'LD') t.radio.setKnob('LD');
+  while (t.radio.ldSlot !== slot) t.radio.press('UP');
+  t.kyk.setMode('ON');
+  t.kyk.setAddr(pos);
+  return t.kyk.initiate();
+}
+
+test('KYK-13: comprobación de paridad, carga DS-102 en la radio y Z ALL', () => {
+  const t = setup();
+  t.conn.fillDevice = 'KYK13';
+  t.kyk.setAddr(1);
+  assert.equal(t.kyk.initiate().ok, true); // OFF/CHECK con clave
+  assert.equal(t.kyk.lamp, true);
+  t.kyk.setAddr(4);
+  assert.equal(t.kyk.initiate().ok, false); // vacía: no destella
+  // radio apagada -> falla
+  t.kyk.setMode('ON');
+  t.kyk.setAddr(1);
+  assert.match(t.kyk.initiate().reason, /apagado/);
+  powerOn(t, 'LD');
+  const r1 = kykToRadio(t, 1, 6);
+  assert.equal(r1.ok, true);
+  assert.deepEqual([t.radio.slots[5].tag, t.radio.slots[5].alg, t.radio.slots[5].src, t.radio.slots[5].proto], ['VIN-TEK-05', 'VINSON', 'KYK-13', 'DS-102']);
+  kykToRadio(t, 2, 7);
+  assert.equal(t.radio.slots[6].alg, 'ANDVT');
+  // con el FILL cableado al SKL el KYK-13 no llega a la radio
+  t.conn.fillDevice = 'SKL';
+  assert.match(kykToRadio(t, 1, 8).reason, /no está conectado/);
+  assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'kyk13'), t).slice(2).every((c) => c.ok));
+  t.kyk.setMode('ZALL');
+  assert.ok(t.kyk.positions.every((k) => !k));
+});
+
+test('SKL -> KYK-13: requiere cable, ON y DS-102', () => {
+  const t = setup();
+  loginSkl(t);
+  const issueTo = () => {
+    t.skl.act('go', 'ISSUE');
+    t.skl.act('toggleSelect', 'SAT-TEK-07');
+    t.skl.act('issueReview');
+    t.skl.act('setTarget', 'KYK13');
+    t.skl.act('issueGo');
+    t.clock.advance(2000);
+    return t.skl.issue.results[0];
+  };
+  assert.match(issueTo().reason, /cable/);
+  t.conn.sklKyk = true;
+  assert.match(issueTo().reason, /DS-102/);
+  t.skl.act('setProtocol', 'DS-102');
+  assert.match(issueTo().reason, /no está en ON/);
+  t.kyk.setMode('ON');
+  t.kyk.setAddr(3);
+  const r = issueTo();
+  assert.equal(r.ok, true);
+  assert.equal(t.kyk.positions[2].tag, 'SAT-TEK-07');
+  assert.equal(t.kyk.positions[2].alg, 'ANDVT');
+  assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'kyk-skl'), t).every((c) => c.ok));
+});
+
+test('SATCOM dedicado 5 kHz con ANDVT: validaciones y contacto', () => {
+  const t = setup();
+  t.conn.fillDevice = 'KYK13';
+  powerOn(t, 'LD');
+  kykToRadio(t, 2, 7); // ANDVT-TEK-31 en S07
+  t.radio.setKnob('ON');
+  // rangos de banda SATCOM
+  assert.match(SIM.Radio.validateNum('satTx', 254.15, t.radio.presets[5]), /RANGO TX/);
+  assert.match(SIM.Radio.validateNum('satRx', 311.15, t.radio.presets[5]), /RANGO RX/);
+  program(t, 5, [['mode', 'SATCOM'], ['satTx', '311.15'], ['satRx', '254.15'], ['satBw', 5], ['crypto', 'CT'], ['keySlot', 7]]);
+  t.radio.cur = 5;
+  // VINSON (por defecto) en 5K -> bloqueado
+  let r = t.radio.pttDown();
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /ANDVT/);
+  program(t, 5, [['cryptoMode', 'ANDVT']]);
+  // sin antena SATCOM
+  talk(t);
+  assert.match(t.hints.at(-1), /antena SATCOM/);
+  t.conn.antenna = 'SATCOM';
+  talk(t);
+  assert.equal(t.net.contacts.CENTAURO, 1);
+  assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'sat-ded'), t).every((c) => c.ok));
+});
+
+test('SATCOM: frecuencias invertidas y algoritmo de clave distinto', () => {
+  const t = setup();
+  t.conn.fillDevice = 'KYK13';
+  t.conn.antenna = 'SATCOM';
+  powerOn(t, 'LD');
+  kykToRadio(t, 1, 1); // VIN-TEK-05 (VINSON)
+  t.radio.setKnob('ON');
+  const p = t.radio.presets[5];
+  Object.assign(p, { mode: 'SATCOM', satType: 'DEDICADO', satTx: 292, satRx: 243, satBw: 5, crypto: 'CT', cryptoMode: 'ANDVT', keySlot: 1 });
+  t.radio.cur = 5;
+  const r = t.radio.pttDown();
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /es VINSON/);
+  const ev = t.net.evaluate(Object.assign(t.radio.linkSnapshot(), { preset: Object.assign({}, p, { satTx: 254.15, satRx: 311.15 }) }));
+  assert.match(ev.reason, /invertidas/);
+});
+
+test('SATCOM DAMA con VINSON: acceso DAMA y dirección asignada', () => {
+  const t = setup();
+  t.conn.fillDevice = 'KYK13';
+  powerOn(t, 'LD');
+  kykToRadio(t, 1, 6); // VIN-TEK-05
+  t.radio.setKnob('ON');
+  program(t, 6, [['mode', 'SATCOM'], ['satType', 'DAMA'], ['damaSat', 'SAT-2'], ['damaNet', '7'], ['damaAddr', '10452'], ['crypto', 'CT'], ['keySlot', 6]]);
+  t.radio.cur = 6;
+  assert.match(t.radio.pttDown().reason, /ACCESO DAMA/);
+  const goDama = () => {
+    t.radio.press('PGM');
+    while (t.radio.screen.items()[t.radio.screen.idx].label !== 'ACCESO DAMA') t.radio.press('DOWN');
+    t.radio.press('ENT');
+    t.clock.advance(3500);
+    const ok = t.radio.screen.ok;
+    t.radio.press('CLR');
+    t.radio.press('CLR');
+    return ok;
+  };
+  assert.equal(goDama(), false, 'sin antena SATCOM se deniega');
+  t.conn.antenna = 'SATCOM';
+  assert.equal(goDama(), true);
+  talk(t);
+  assert.equal(t.net.contacts.ORION, 1);
+  assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'sat-dama'), t).every((c) => c.ok));
+  // otra dirección: el controlador no la reconoce
+  program(t, 6, [['damaAddr', '10453']]);
+  goDama();
+  talk(t);
+  assert.match(t.hints.at(-1), /dirección de terminal/);
+  // apagar pierde el acceso
+  t.radio.setKnob('OFF');
+  assert.equal(t.radio.dama, null);
 });

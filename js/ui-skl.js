@@ -54,7 +54,7 @@
     },
     KEYS(skl) {
       const rows = skl.keys.length
-        ? skl.keys.map((k) => `<button type="button" class="sk-item" data-act="detail" data-arg="${esc(k.id)}"><span class="sk-type">${k.type}</span><span class="sk-tag">${esc(k.tag)}</span>${keyState(skl, k)}</button>`).join('')
+        ? skl.keys.map((k) => `<button type="button" class="sk-item" data-act="detail" data-arg="${esc(k.id)}"><span class="sk-type">${k.type}${k.alg === 'ANDVT' ? '·A' : k.alg ? '·V' : ''}</span><span class="sk-tag">${esc(k.tag)}</span>${keyState(skl, k)}</button>`).join('')
         : '<p class="sk-small">Base de datos vacía.</p>';
       return `${statusBar(skl)}${titleBar(`Claves (${skl.keys.length})`)}<div class="sk-body sk-list">${rows}</div>`;
     },
@@ -65,6 +65,7 @@
       return `${statusBar(skl)}${titleBar(k.tag, 'KEYS')}<div class="sk-body">
         <table class="sk-table">
           <tr><th>Tipo</th><td>${k.type} · ${esc(SIM.SKL.KEY_TYPES[k.type] || '')}</td></tr>
+          ${k.alg ? `<tr><th>Algoritmo</th><td>${k.alg}</td></tr>` : ''}
           <tr><th>Uso</th><td>${esc(k.desc)}</td></tr>
           <tr><th>Estado</th><td>${keyState(skl, k)}</td></tr>
           <tr><th>Vigencia</th><td>${SIM.fmtDate(k.eff)} → ${SIM.fmtDate(k.exp)}</td></tr>
@@ -77,20 +78,24 @@
     },
     ISSUE(skl) {
       const rows = skl.keys.length
-        ? skl.keys.map((k) => `<label class="sk-item check"><input type="checkbox" data-act="toggleSelect" data-arg="${esc(k.id)}"${skl.selected.includes(k.id) ? ' checked' : ''}><span class="sk-type">${k.type}</span><span class="sk-tag">${esc(k.tag)}</span>${keyState(skl, k)}</label>`).join('')
+        ? skl.keys.map((k) => `<label class="sk-item check"><input type="checkbox" data-act="toggleSelect" data-arg="${esc(k.id)}"${skl.selected.includes(k.id) ? ' checked' : ''}><span class="sk-type">${k.type}${k.alg === 'ANDVT' ? '·A' : k.alg ? '·V' : ''}</span><span class="sk-tag">${esc(k.tag)}</span>${keyState(skl, k)}</label>`).join('')
         : '<p class="sk-small">No hay claves para emitir.</p>';
       return `${statusBar(skl)}${titleBar('Emitir claves · seleccionar')}<div class="sk-body sk-list">${rows}</div>
         <div class="sk-foot">${msg(skl)}${btn(`Revisar (${skl.selected.length})`, 'issueReview', null, 'primary')}</div>`;
     },
     ISSUE_CONFIRM(skl) {
       const list = skl.selected.map((id) => skl.keyById(id)).filter(Boolean)
-        .map((k) => `<li>${k.type} · <b>${esc(k.tag)}</b> ${keyState(skl, k)}</li>`).join('');
+        .map((k) => `<li>${k.type}${k.alg ? ' ' + k.alg : ''} · <b>${esc(k.tag)}</b> ${keyState(skl, k)}</li>`).join('');
       const proto = ['DS-101', 'DS-102'].map((p) => btn(p, 'setProtocol', p, skl.protocol === p ? 'primary' : 'ghost')).join('');
+      const target = Object.entries(SIM.SKL.TARGETS).map(([id, name]) => btn(name, 'setTarget', id, skl.target === id ? 'primary' : 'ghost')).join('');
+      const tip = skl.target === 'KYK13'
+        ? 'Antes de emitir: cable SKL ↔ KYK-13, protocolo <b>DS-102</b>, KYK-13 en <b>ON</b> y en la posición destino.'
+        : 'Antes de emitir: FILL de la radio cableado al SKL, radio en <b>LD</b> y slot destino elegido.';
       return `${statusBar(skl)}${titleBar('Emitir claves · revisar', 'ISSUE')}<div class="sk-body">
-        <p class="sk-small">Destino: AN/PRC-117F por el conector FILL.</p>
         <ul class="sk-ul">${list}</ul>
+        <p class="sk-small">Equipo destino:</p><div class="sk-row">${target}</div>
         <p class="sk-small">Protocolo de llenado:</p><div class="sk-row">${proto}</div>
-        <p class="sk-small">Antes de emitir: cable conectado, radio en <b>LD</b> y slot destino elegido.</p>
+        <p class="sk-small">${tip}</p>
         <div class="sk-row end">${btn('Emitir', 'issueGo', null, 'primary')}</div>
       </div>`;
     },
@@ -103,7 +108,8 @@
         <p class="sk-small">No desconecte el cable de llenado.</p></div>`;
     },
     ISSUE_RESULT(skl) {
-      const rows = skl.issue.results.map((r) => `<li class="${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓' : '✗'} <b>${esc(r.tag)}</b> ${r.ok ? `→ slot ${SIM.pad(r.slot)}${r.overwritten ? ' (sobrescrito)' : ''}` : '· ' + esc(r.reason)}</li>`).join('');
+      const dest = SIM.SKL.TARGETS[skl.issue.target];
+      const rows = skl.issue.results.map((r) => `<li class="${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓' : '✗'} <b>${esc(r.tag)}</b> ${r.ok ? `→ ${dest} ${esc(r.where)}${r.overwritten ? ' (sobrescrito)' : ''}` : '· ' + esc(r.reason)}</li>`).join('');
       return `${statusBar(skl)}${titleBar('Resultado de la emisión')}<div class="sk-body"><ul class="sk-ul result">${rows}</ul>
         <div class="sk-row end">${btn('Emitir otra', 'go', 'ISSUE')}${btn('Inicio', 'go', 'HOME', 'primary')}</div></div>`;
     },
@@ -114,7 +120,8 @@
       return `${statusBar(skl)}${titleBar('Auditoría')}<div class="sk-body sk-list"><ol class="sk-audit">${rows}</ol></div>`;
     },
     NEW(skl) {
-      const types = Object.keys(SIM.SKL.KEY_TYPES).map((t) => `<button type="button" class="sk-item" data-act="newKey" data-arg="${t}"><span class="sk-type">${t}</span><span class="sk-tag">${esc(SIM.SKL.KEY_TYPES[t])}</span></button>`).join('');
+      const opts = [['TEK:VINSON', 'TEK', 'TEK VINSON (voz 25 kHz)'], ['TEK:ANDVT', 'TEK', 'TEK ANDVT (voz banda estrecha / SATCOM 5 kHz)'], ['TSK', 'TSK', SIM.SKL.KEY_TYPES.TSK], ['WOD', 'WOD', SIM.SKL.KEY_TYPES.WOD], ['KEK', 'KEK', SIM.SKL.KEY_TYPES.KEK]];
+      const types = opts.map(([arg, t, label]) => `<button type="button" class="sk-item" data-act="newKey" data-arg="${arg}"><span class="sk-type">${t}</span><span class="sk-tag">${esc(label)}</span></button>`).join('');
       return `${statusBar(skl)}${titleBar('Generar clave de entrenamiento')}<div class="sk-body sk-list">${types}</div>`;
     },
     SETTINGS(skl) {

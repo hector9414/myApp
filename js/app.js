@@ -6,13 +6,14 @@
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const STORE = 'sim-prc117f-skl-v1';
 
-  const DEFAULT_CONN = { antenna: 'NONE', handset: false, fillCable: false, cik: false };
+  const DEFAULT_CONN = { antenna: 'NONE', handset: false, fillDevice: 'NONE', sklKyk: false, cik: false };
   const conn = Object.assign({}, DEFAULT_CONN);
   const prefs = { hints: true, voice: false, call: 'Lobo 2', scenario: 'bit' };
   let completed = {};
 
   const radio = new SIM.Radio({ getConn: () => conn });
-  const skl = new SIM.SKL({ cik: () => conn.cik, fill: SIM.makeFillBridge(() => conn, radio) });
+  const kyk = new SIM.KYK13({ fill: SIM.makeKykBridge(() => conn, radio) });
+  const skl = new SIM.SKL({ cik: () => conn.cik, fill: SIM.makeFillBridge(() => conn, radio, kyk) });
   const net = new SIM.Net(radio, { myCall: () => prefs.call.trim() || 'Lobo 2' });
 
   // ------------------------------------------------------------------ persistencia
@@ -23,7 +24,11 @@
     try {
       radio.load(data.radio);
       skl.load(data.skl);
-      if (data.conn) for (const k of Object.keys(DEFAULT_CONN)) if (k in data.conn) conn[k] = data.conn[k];
+      kyk.load(data.kyk);
+      if (data.conn) {
+        for (const k of Object.keys(DEFAULT_CONN)) if (k in data.conn) conn[k] = data.conn[k];
+        if (data.conn.fillCable && !('fillDevice' in data.conn)) conn.fillDevice = 'SKL'; // versión anterior
+      }
       if (data.prefs) Object.assign(prefs, data.prefs);
       if (data.completed) completed = data.completed;
     } catch (e) { /* estado corrupto: se ignora */ }
@@ -33,7 +38,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        localStorage.setItem(STORE, JSON.stringify({ radio: radio.serialize(), skl: skl.serialize(), conn, prefs, completed }));
+        localStorage.setItem(STORE, JSON.stringify({ radio: radio.serialize(), skl: skl.serialize(), kyk: kyk.serialize(), conn, prefs, completed }));
       } catch (e) { /* almacenamiento no disponible */ }
     }, 400);
   }
@@ -104,13 +109,16 @@
   function renderConn() {
     $$('input[name="antenna"]').forEach((r) => { r.checked = r.value === conn.antenna; });
     $('#conn-handset').checked = conn.handset;
-    $('#conn-fill').checked = conn.fillCable;
+    $$('input[name="filldev"]').forEach((r) => { r.checked = r.value === conn.fillDevice; });
+    $('#conn-sklkyk').checked = conn.sklKyk;
     $('#conn-cik').checked = conn.cik;
     $('#port-ant').classList.toggle('connected', conn.antenna !== 'NONE');
     $('#port-ant').title = { NONE: 'Sin antena', WHIP: 'Antena de látigo', SATCOM: 'Antena SATCOM' }[conn.antenna];
     $('#port-audio').classList.toggle('connected', conn.handset);
-    $('#port-fill').classList.toggle('connected', conn.fillCable);
-    $('#skl-fill').classList.toggle('connected', conn.fillCable);
+    $('#port-fill').classList.toggle('connected', conn.fillDevice !== 'NONE');
+    $('#port-fill').title = { NONE: 'Sin cable de llenado', SKL: 'Cableado al SKL', KYK13: 'Cableado al KYK-13' }[conn.fillDevice];
+    $('#skl-fill').classList.toggle('connected', conn.fillDevice === 'SKL' || conn.sklKyk);
+    $('#kyk-fill').classList.toggle('connected', conn.fillDevice === 'KYK13' || conn.sklKyk);
     $('#cik-slot').classList.toggle('connected', conn.cik);
     $('#handset').classList.toggle('disconnected', !conn.handset);
     $('#handset-state').textContent = conn.handset ? 'conectado' : 'desconectado';
@@ -124,9 +132,29 @@
     el.innerHTML = SIM.renderSKL(skl, { hints: prefs.hints });
   }
 
+  // ------------------------------------------------------------------ KYK-13
+  const escHtml = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function renderKyk() {
+    $$('[data-kmode]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.kmode === kyk.mode);
+      b.setAttribute('aria-pressed', String(b.dataset.kmode === kyk.mode));
+    });
+    $$('[data-kaddr]').forEach((b) => {
+      b.classList.toggle('active', Number(b.dataset.kaddr) === kyk.addr);
+      b.setAttribute('aria-pressed', String(Number(b.dataset.kaddr) === kyk.addr));
+    });
+    $('#kyk-lamp').classList.toggle('on', kyk.lamp);
+    const m = $('#kyk-msg');
+    m.textContent = kyk.last ? kyk.last.text : `Posición ${kyk.addr} seleccionada · interruptor en ${{ ZALL: 'Z ALL', OFF: 'OFF/CHECK', ON: 'ON' }[kyk.mode]}`;
+    m.className = 'kyk-msg' + (kyk.last ? (kyk.last.ok ? ' ok' : ' bad') : '');
+    $('#kyk-sheet').innerHTML = kyk.positions.map((k, i) => `<tr class="${i + 1 === kyk.addr ? 'sel' : ''}"><td>${i + 1}</td>${k
+      ? `<td><b>${escHtml(k.tag)}</b></td><td>${k.type}${k.alg ? ' ' + k.alg : ''}</td><td>${escHtml(k.desc || (k.src === 'SKL' ? 'Cargada desde el SKL' : ''))}</td>`
+      : '<td class="empty" colspan="3">vacía</td>'}</tr>`).join('');
+  }
+
   // ------------------------------------------------------------------ ejercicios
   function renderScenarios() {
-    const ctx = { radio, skl, net, conn };
+    const ctx = { radio, skl, kyk, net, conn };
     const list = $('#sc-list');
     const results = {};
     SIM.SCENARIOS.forEach((sc) => {
@@ -172,6 +200,7 @@
       renderRadio();
       renderConn();
       renderSKL();
+      renderKyk();
       renderScenarios();
     });
   }
@@ -180,7 +209,13 @@
   radio.on('change', () => { renderAll(); save(); });
   radio.on('beep', () => SIM.audio.beep());
   radio.on('squelch-tail', () => SIM.audio.noise(180));
-  radio.on('fill', ({ slot, key, overwritten }) => addLog({ dir: 'FILL', text: `Radio: ${key.type} ${key.tag} recibida en el slot ${SIM.pad(slot)}${overwritten ? ' (sobrescribe la anterior)' : ''}.` }));
+  radio.on('fill', ({ slot, key, overwritten, source, protocol }) => addLog({ dir: 'FILL', text: `Radio: ${key.type}${key.alg ? ' ' + key.alg : ''} ${key.tag} recibida desde ${source} (${protocol}) en el slot ${SIM.pad(slot)}${overwritten ? ' (sobrescribe la anterior)' : ''}.` }));
+  radio.on('dama', (d) => addLog({ dir: 'INFO', text: d.ok ? `Acceso DAMA concedido: ${d.sat}, red ${SIM.pad(d.net)}, terminal ${SIM.pad(d.addr, 5)}.` : `Acceso DAMA denegado: ${d.why}.` }));
+  kyk.on('change', () => { renderAll(); save(); });
+  kyk.on('lamp', () => SIM.audio.beep(1400, 80));
+  kyk.on('received', ({ pos, key }) => addLog({ dir: 'FILL', text: `KYK-13: ${key.tag} recibida del SKL en la posición ${pos}.` }));
+  kyk.on('zeroize', ({ count }) => addLog({ dir: 'FILL', text: `KYK-13: Z ALL, ${count} posiciones borradas.` }));
+  kyk.on('result', (r) => { if (!r.ok) hint('KYK-13: ' + r.text); });
   radio.on('zeroize', (e) => addLog({ dir: 'FILL', text: e.all ? `Radio: zeroize, todas las claves borradas (${e.source}).` : `Radio: slot ${SIM.pad(e.slot)} borrado.` }));
   radio.on('bit', (r) => addLog({ dir: 'INFO', text: `Autoprueba BIT ${r.pass ? 'SUPERADA' : 'FALLIDA'}.` }));
   radio.on('tod', () => addLog({ dir: 'INFO', text: 'Hora TOD sincronizada.' }));
@@ -295,7 +330,17 @@
     radio.changed();
   }));
   $('#conn-handset').addEventListener('change', (e) => { conn.handset = e.target.checked; if (!conn.handset) pttStop(); radio.changed(); });
-  $('#conn-fill').addEventListener('change', (e) => { conn.fillCable = e.target.checked; radio.changed(); });
+  $$('input[name="filldev"]').forEach((r) => r.addEventListener('change', () => { conn.fillDevice = r.value; radio.changed(); }));
+  $('#conn-sklkyk').addEventListener('change', (e) => { conn.sklKyk = e.target.checked; renderAll(); save(); });
+
+  // ------------------------------------------------------------------ KYK-13
+  $$('[data-kmode]').forEach((b) => b.addEventListener('click', () => {
+    SIM.audio.unlock();
+    if (b.dataset.kmode === 'ZALL' && kyk.mode !== 'ZALL' && !window.confirm('Z ALL: se borrarán TODAS las posiciones del KYK-13.\n\n¿Continuar?')) return;
+    kyk.setMode(b.dataset.kmode);
+  }));
+  $$('[data-kaddr]').forEach((b) => b.addEventListener('click', () => kyk.setAddr(Number(b.dataset.kaddr))));
+  $('#kyk-init').addEventListener('click', () => { SIM.audio.unlock(); kyk.initiate(); });
   $('#conn-cik').addEventListener('change', (e) => { conn.cik = e.target.checked; skl.cikChanged(); renderAll(); save(); });
   $('#bat-replace').addEventListener('click', () => { radio.replaceBattery(); toast('Batería reemplazada.', 'ok'); });
 
@@ -312,6 +357,7 @@
     net.reset();
     radio.hardReset();
     skl.hardReset();
+    kyk.hardReset();
     Object.assign(conn, DEFAULT_CONN);
     completed = {};
     logEl.innerHTML = '';
@@ -341,5 +387,5 @@
     net.tick();
   }, 1000);
 
-  window.SIM_APP = { radio, skl, net, conn, prefs };
+  window.SIM_APP = { radio, skl, kyk, net, conn, prefs };
 })();
