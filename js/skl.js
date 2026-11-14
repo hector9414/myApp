@@ -1,82 +1,92 @@
 /*
- * Modelo del cargador de claves SKL AN/PYQ-10 (simulación de entrenamiento).
+ * Modelo del Simple Key Loader AN/PYQ-10 (simulación de entrenamiento).
  *
- * Flujo: encendido -> CIK -> PIN -> menú principal. Permite consultar la base
- * de datos de claves, emitir (fill) claves a la radio por el cable de llenado
- * con protocolo DS-101 / DS-102, ver la auditoría, generar claves de
- * entrenamiento, borrar claves y hacer zeroize del equipo.
+ * Basado en el curso del SKL (carpeta Manuals/):
+ *   - Encendido -> inicialización -> inicio de sesión (usuario y contraseña).
+ *   - CIK: solo se inserta o retira con el equipo apagado.
+ *   - Escritorio Core Library -> UAS (User Application Software) con las
+ *     pestañas Plats, Eqs, Keys y SOI.
+ *   - Carga de claves: Keys > seleccionar > LOAD > Protocol DS-101 / DS-102,
+ *     Activation Mode KYK-13 > OK > «Ready to send key» > OK >
+ *     «Press INITIATE button…» -> se pulsa ENT en la radio.
+ *   - Loadset SINCGARS: Plats > loadset > LOAD > ICOM (+ hora) > asistente.
+ *   - Auditoría: solo con cuenta SSO (Tools > SSO > Audit Functions).
+ *   - Luz KOV, botón de zeroize, batería (verde/ámbar/rojo; a 1 % se apaga).
  *
- * Todas las claves son etiquetas ficticias. No hay material criptográfico.
+ * Todas las claves son etiquetas ficticias de entrenamiento (ETD).
  */
 (function (g) {
   'use strict';
   const SIM = g.SIM;
-
   const DAY = 86400000;
-  const TRAINING_PIN = '1234';
-  const MAX_ATTEMPTS = 3;
-  const KEY_TYPES = {
-    TEK: 'Clave de cifrado de tráfico (COMSEC)',
-    TSK: 'Clave TRANSEC / salto de frecuencia SINCGARS',
-    WOD: 'Palabra del día HAVE QUICK II',
-    KEK: 'Clave de cifrado de claves (OTAR)',
-  };
 
-  function makeKey(now, tag, type, desc, effDays, expDays, alg) {
-    return {
-      id: tag,
-      tag,
-      type,
-      alg: type === 'TEK' ? alg || 'VINSON' : null,
-      desc,
-      eff: now + effDays * DAY,
-      exp: now + expDays * DAY,
-      chk: SIM.checksum(tag),
-      issued: 0,
-      cls: 'ENTRENAMIENTO',
-    };
+  const ACCOUNTS = {
+    operador: { pass: 'Operador1', role: 'USER' },
+    sso: { pass: 'Sso12345', role: 'SSO' },
+  };
+  const MAX_ATTEMPTS = 3;
+
+  function mk(now, tag, bank, type, desc, effDays, expDays, extra) {
+    return Object.assign({
+      id: tag, tag, bank, type, desc,
+      edition: 'AB', segment: 1,
+      eff: now + effDays * DAY, exp: now + expDays * DAY,
+      variable: true, issued: 0, chk: SIM.checksum(tag),
+    }, extra || {});
   }
 
   function defaultKeys(now) {
     return [
-      makeKey(now, 'ALFA-TEK-01', 'TEK', 'Red de mando LOS (VHF FM)', -10, 20),
-      makeKey(now, 'ALFA-TEK-00', 'TEK', 'Red de mando, periodo anterior', -40, -2),
-      makeKey(now, 'BRAVO-TEK-02', 'TEK', 'Red de maniobra SINCGARS', -5, 25),
-      makeKey(now, 'SINC-HOP-12', 'TSK', 'TRANSEC / conjunto de saltos SINCGARS', -5, 25),
-      makeKey(now, 'HQ-WOD-NOV', 'WOD', 'Palabra del día HAVE QUICK II', -3, 27),
-      makeKey(now, 'SAT-TEK-07', 'TEK', 'Red SATCOM de reserva (ANDVT)', -7, 23, 'ANDVT'),
-      makeKey(now, 'KEK-RED-01', 'KEK', 'Cifrado de claves para OTAR', -30, 60),
+      mk(now, 'ETD-VIN-0001', 'VINSON', 'TEK', 'Red LOS de Cóndor 3', -10, 20),
+      mk(now, 'ETD-VIN-0000', 'VINSON', 'TEK', 'Red LOS, periodo anterior', -40, -2),
+      mk(now, 'ETD-AND-0031', 'ANDVT', 'TEK', 'SATCOM dedicado 5 kHz (Base Centauro)', -7, 23),
+      mk(now, 'ETD-AND-0044', 'ANDVT', 'TEK', 'Red DAMA de Nodo Orión', -7, 23),
+      mk(now, 'ETD-SAT-0007', 'SATELLITE', 'TSK', 'TSK de orderwire DAMA (EOW)', -7, 23),
+      mk(now, 'ETD-MWOD', 'HAVEQUICK', 'WOD', 'MWOD HAVEQUICK del mes (posición = día UTC)', -10, 30),
+      mk(now, 'ETD-KG8-0002', 'KG-84', 'TEK', 'Datos KG-84 (pendiente de variable)', -1, 29, { variable: false }),
+      mk(now, 'ETD-VIN-KEK1', 'VINSON', 'KEK', 'KEK VINSON para OTAR', -30, 60),
     ];
   }
 
-  const TARGETS = { RADIO: 'AN/PRC-117F', KYK13: 'KYK-13' };
+  function defaultLoadsets() {
+    return [{
+      name: 'LS-MANIOBRA',
+      platform: 'VEH MANDO',
+      teks: ['ETD-VIN-0101', 'ETD-VIN-0102', 'ETD-VIN-0103', 'ETD-VIN-0104', 'ETD-VIN-0105'],
+      kek: 'ETD-VIN-KEK6',
+      coldStart: 'ETD-HOP-H0',
+      hopsets: [
+        { tag: 'ETD-HOP-H1', netId: 345 },
+        { tag: 'ETD-HOP-H2', netId: 346 },
+        { tag: 'ETD-HOP-H3', netId: 400 },
+        { tag: 'ETD-HOP-H4', netId: 401 },
+        { tag: 'ETD-HOP-H5', netId: 500 },
+        { tag: 'ETD-HOP-H6', netId: 501 },
+      ],
+    }];
+  }
+
+  const PLATFORMS = [{ name: 'VEH MANDO', bussed: 'Non-Bussed', equipment: ['AN/PRC-117F (RT-1796)'] }];
+  const EQUIPMENT = [{ name: 'AN/PRC-117F', type: 'RT-1796', fills: 'J1 AUDIO/DATA/FILL', protocols: 'DS-101 / DS-102' }];
 
   /**
-   * Puente entre el SKL y el equipo destino: comprueba el cableado antes de
-   * entregar la clave. conn.fillDevice indica qué hay en el conector FILL de la
-   * radio ('NONE' | 'SKL' | 'KYK13'); conn.sklKyk, si hay cable SKL <-> KYK-13.
+   * Conecta el SKL con la radio por el conector J1.
+   * getConn().j1 === 'SKL' indica que el cable de llenado está en J1.
    */
-  SIM.makeFillBridge = (getConn, radio, kyk) => (key, protocol, target = 'RADIO') => {
-    const c = getConn();
-    if (target === 'KYK13') {
-      if (!kyk) return { ok: false, reason: 'No hay KYK-13 disponible' };
-      if (!c.sklKyk) return { ok: false, reason: 'No hay cable de llenado entre el SKL y el KYK-13' };
-      if (protocol !== 'DS-102') return { ok: false, reason: 'El KYK-13 solo admite el protocolo DS-102' };
-      return kyk.receive(key);
-    }
-    if (c.fillDevice !== 'SKL') return { ok: false, reason: 'El conector FILL de la radio no está cableado al SKL' };
-    return radio.receiveFill(key, protocol, 'SKL');
+  SIM.connectFill = (getConn, radio, skl) => {
+    radio.env.fillPull = (req) => skl.providePull(req, getConn());
+    skl.env.pushLoadset = (ls, includeTime) => {
+      if (getConn().j1 !== 'SKL') return { ok: false, reason: 'El SKL no está conectado a J1 de la radio' };
+      return radio.receiveLoadset(ls, includeTime);
+    };
   };
 
   class SKL extends SIM.Device {
-    /**
-     * env.cik() -> bool (CIK insertado)
-     * env.fill(key, protocol) -> { ok, reason?, slot? }
-     */
+    /** env.cik() -> bool ; env.pushLoadset(ls, includeTime) -> { ok, reason } */
     constructor(env) {
       super(env);
       if (!this.env.cik) this.env.cik = () => true;
-      if (!this.env.fill) this.env.fill = () => ({ ok: false, reason: 'Sin destino' });
+      if (!this.env.pushLoadset) this.env.pushLoadset = () => ({ ok: false, reason: 'Sin equipo' });
       this.hardReset();
     }
 
@@ -84,38 +94,50 @@
       this.clearTimers();
       this.power = false;
       this.booted = false;
-      this.loggedIn = false;
+      this.user = null;
       this.screen = 'OFF';
-      this.pin = '';
+      this.tab = 'KEYS';
       this.attempts = 0;
       this.locked = false;
+      this.kov = 'OFF';
+      this.battery = 100;
       this.keys = defaultKeys(this.env.now());
+      this.loadsets = defaultLoadsets();
       this.audit = [];
       this.selected = [];
-      this.protocol = 'DS-101';
-      this.target = 'RADIO';
-      this.detailId = null;
-      this.issue = null;
+      this.selLoadset = null;
+      this.protocol = 'DS-102';
+      this.activation = 'KYK-13';
+      this.send = null;
+      this.icom = null;
+      this.dialog = null;
       this.message = null;
-      this.confirm = null;
+      this.uasOpen = false;
+      this.lowWarned = false;
       this.changed();
     }
 
-    isExpired(k) {
-      return k.exp < this.env.now();
+    get loggedIn() {
+      return !!this.user;
     }
-    isPending(k) {
-      return k.eff > this.env.now();
+    get isSSO() {
+      return !!this.user && this.user.role === 'SSO';
     }
     keyById(id) {
       return this.keys.find((k) => k.id === id);
     }
-
-    log(action, detail, ok = true) {
-      this.audit.unshift({ t: this.env.now(), action, detail, ok });
-      if (this.audit.length > 200) this.audit.length = 200;
+    keyStatus(k) {
+      const now = this.env.now();
+      if (!k.variable) return 'TAG';
+      if (k.exp < now) return 'RED';
+      if (k.eff > now) return 'PENDING';
+      return 'YELLOW';
     }
 
+    log(action, detail, ok = true) {
+      this.audit.unshift({ t: this.env.now(), user: this.user ? this.user.name : '-', action, detail, ok });
+      if (this.audit.length > 300) this.audit.length = 300;
+    }
     nav(screen) {
       this.screen = screen;
       this.message = null;
@@ -129,46 +151,90 @@
     }
 
     powerOn() {
+      if (this.battery <= 1) return;
       this.power = true;
       this.booted = false;
       this.screen = 'BOOT';
+      this.cikAtBoot = this.env.cik();
       this.changed();
-      this.after(1800, () => {
+      this.after(2000, () => {
         this.booted = true;
-        this.screen = this.locked ? 'LOCKED' : this.env.cik() ? 'PIN' : 'CIK';
-        this.pin = '';
+        this.screen = this.locked ? 'LOCKED' : this.env.cik() ? 'LOGIN' : 'CIK';
         this.changed();
       });
     }
 
     powerOff() {
+      if (this.uasOpen || this.user) {
+        this.log('APAGADO', this.uasOpen ? 'Apagado con la UAS abierta (orden correcto: salir de UAS, cerrar sesión, apagar)' : 'Apagado sin cerrar sesión', false);
+      }
       this.clearTimers();
-      if (this.loggedIn) this.log('CIERRE DE SESION', 'Apagado del equipo');
       this.power = false;
       this.booted = false;
-      this.loggedIn = false;
-      this.issue = null;
+      this.user = null;
+      this.uasOpen = false;
+      this.send = null;
+      this.icom = null;
+      this.dialog = null;
+      this.kov = 'OFF';
       this.screen = 'OFF';
       this.changed();
     }
 
-    /** Avisar al SKL de que se ha insertado o retirado el CIK. */
+    /** Avisar de que se ha insertado o retirado el CIK. */
     cikChanged() {
-      if (!this.power || !this.booted) return;
-      if (!this.env.cik()) {
-        if (this.loggedIn) this.log('CIERRE DE SESION', 'CIK retirado');
-        this.clearTimers();
-        this.loggedIn = false;
-        this.issue = null;
-        this.screen = this.locked ? 'LOCKED' : 'CIK';
-      } else if (this.screen === 'CIK') {
-        this.screen = 'PIN';
-        this.pin = '';
-      }
+      if (!this.power) return;
+      this.log('ALARMA', 'CIK insertado/retirado con el equipo encendido (solo debe hacerse apagado)', false);
+      this.user = null;
+      this.uasOpen = false;
+      this.send = null;
+      this.icom = null;
+      this.dialog = null;
+      this.kov = 'OFF';
+      this.screen = this.env.cik() ? 'LOGIN' : 'CIK';
+      this.message = 'Alarma: el CIK solo se inserta o retira con el SKL apagado.';
       this.changed();
     }
 
-    // ---------------------------------------------------------------- acciones
+    tick(dt) {
+      if (!this.power) return;
+      const before = Math.ceil(this.battery);
+      this.battery = Math.max(0, this.battery - dt * 0.004);
+      if (this.battery <= 2 && !this.lowWarned) {
+        this.lowWarned = true;
+        this.message = 'Batería al 2 %: recargue o cambie el paquete de baterías.';
+      }
+      if (this.battery <= 1) {
+        this.log('APAGADO AUTOMATICO', 'Batería al 1 %', false);
+        this.powerOff();
+        return;
+      }
+      if (Math.ceil(this.battery) !== before) this.changed();
+    }
+
+    replaceBattery() {
+      this.battery = 100;
+      this.lowWarned = false;
+      this.changed();
+    }
+
+    /** Botón físico de zeroize: borra todas las claves y la base de datos. */
+    zeroize() {
+      if (!this.power) return;
+      const n = this.keys.length + this.loadsets.length;
+      this.keys = [];
+      this.loadsets = [];
+      this.selected = [];
+      this.send = null;
+      this.icom = null;
+      this.dialog = null;
+      this.log('ZEROIZE', `Botón de zeroize: ${n} elementos eliminados; KOV-21 a cero`);
+      this.kov = this.user ? 'GREEN' : 'OFF';
+      this.message = 'ZEROIZE completado: base de datos vacía.';
+      this.changed();
+    }
+
+    // ---------------------------------------------------------------- acciones de la interfaz
     act(action, arg) {
       if (!this.power || !this.booted) return;
       const fn = this['a_' + action];
@@ -176,181 +242,274 @@
       this.changed();
     }
 
-    a_pinDigit(d) {
-      if (this.screen !== 'PIN' || this.pin.length >= 8) return;
-      this.pin += String(d);
-      this.message = null;
-    }
-    a_pinBack() {
-      this.pin = this.pin.slice(0, -1);
-    }
-    a_pinOk() {
-      if (this.screen !== 'PIN') return;
+    a_login(arg) {
+      if (this.screen !== 'LOGIN') return;
       if (!this.env.cik()) return this.nav('CIK');
-      if (this.pin === TRAINING_PIN) {
-        this.loggedIn = true;
+      const name = String((arg && arg.user) || '').trim().toLowerCase();
+      const acc = ACCOUNTS[name];
+      if (acc && arg.pass === acc.pass) {
+        this.user = { name, role: acc.role };
         this.attempts = 0;
-        this.pin = '';
-        this.log('INICIO DE SESION', 'Operador');
-        this.nav('HOME');
+        this.kov = 'GREEN';
+        this.log('INICIO DE SESION', `${name} (${acc.role})`);
+        this.nav('DESKTOP');
         return;
       }
       this.attempts++;
-      this.pin = '';
-      this.log('PIN INCORRECTO', `Intento ${this.attempts} de ${MAX_ATTEMPTS}`, false);
+      this.log('INICIO DE SESION FALLIDO', `Usuario «${name || '?'}» · intento ${this.attempts} de ${MAX_ATTEMPTS}`, false);
       if (this.attempts >= MAX_ATTEMPTS) {
         this.locked = true;
-        this.log('BLOQUEO', 'Demasiados intentos de PIN', false);
+        this.log('BLOQUEO', 'Demasiados intentos fallidos', false);
         return this.nav('LOCKED');
       }
-      this.message = `PIN incorrecto. Quedan ${MAX_ATTEMPTS - this.attempts} intentos.`;
+      this.message = `Usuario o contraseña incorrectos. Quedan ${MAX_ATTEMPTS - this.attempts} intentos.`;
     }
+
     a_adminUnlock() {
       this.locked = false;
       this.attempts = 0;
       this.log('DESBLOQUEO', 'Por el instructor');
-      this.nav(this.env.cik() ? 'PIN' : 'CIK');
+      this.nav(this.env.cik() ? 'LOGIN' : 'CIK');
     }
 
-    a_go(screen) {
-      if (!this.loggedIn) return;
-      if (screen === 'ISSUE') this.selected = this.selected.filter((id) => this.keyById(id));
-      this.nav(screen);
-    }
     a_logout() {
-      this.log('CIERRE DE SESION', 'Operador');
-      this.loggedIn = false;
-      this.nav('PIN');
+      if (this.uasOpen) {
+        this.message = 'Primero salga de la UAS (orden: salir de UAS, cerrar sesión, apagar).';
+        return;
+      }
+      this.log('CIERRE DE SESION', this.user ? this.user.name : '');
+      this.user = null;
+      this.screen = 'LOGOUT';
+      this.after(1500, () => {
+        this.kov = 'OFF';
+        this.screen = 'LOGIN';
+        this.changed();
+      });
     }
 
-    a_detail(id) {
-      if (!this.keyById(id)) return;
-      this.detailId = id;
-      this.nav('DETAIL');
+    a_launchUAS() {
+      if (!this.user) return;
+      this.screen = 'UAS_LOADING';
+      this.after(1800, () => {
+        this.screen = 'UAS_STARTUP';
+        this.changed();
+      });
+    }
+    a_startupOk() {
+      this.uasOpen = true;
+      this.log('UAS', 'Aplicación de usuario iniciada');
+      this.nav('UAS');
+    }
+    a_exitUAS() {
+      this.uasOpen = false;
+      this.send = null;
+      this.icom = null;
+      this.dialog = null;
+      this.nav('DESKTOP');
+    }
+    a_tab(t) {
+      if (['PLATS', 'EQS', 'KEYS', 'SOI'].includes(t)) {
+        this.tab = t;
+        this.dialog = null;
+      }
+    }
+    a_tools() {
+      this.dialog = 'TOOLS';
+    }
+    a_audit() {
+      if (!this.isSSO) {
+        this.dialog = 'DENIED';
+        this.log('AUDITORIA', 'Acceso denegado: requiere SSO', false);
+        return;
+      }
+      this.log('AUDITORIA', 'Consulta del registro de auditoría');
+      this.dialog = null;
+      this.nav('AUDIT');
+    }
+    a_back() {
+      this.dialog = null;
+      this.nav(this.uasOpen ? 'UAS' : 'DESKTOP');
+    }
+    a_closeDlg() {
+      this.dialog = null;
     }
 
-    a_toggleSelect(id) {
+    a_toggleKey(id) {
       if (!this.keyById(id)) return;
       const i = this.selected.indexOf(id);
       if (i >= 0) this.selected.splice(i, 1);
       else this.selected.push(id);
     }
+    a_keyInfo(id) {
+      if (!this.keyById(id)) return;
+      this.infoId = id;
+      this.dialog = 'KEYINFO';
+    }
 
-    a_issueReview() {
-      if (!this.selected.length) {
+    a_expired() {
+      this.dialog = 'EXPIRED';
+    }
+    a_destroyExpired() {
+      const exp = this.keys.filter((k) => this.keyStatus(k) === 'RED');
+      this.keys = this.keys.filter((k) => this.keyStatus(k) !== 'RED');
+      this.selected = this.selected.filter((id) => this.keyById(id));
+      exp.forEach((k) => this.log('DESTRUCCION', `Clave caducada ${k.tag}`));
+      this.message = exp.length ? `${exp.length} clave(s) caducada(s) destruida(s).` : 'No hay claves caducadas.';
+      this.dialog = null;
+    }
+
+    // ---- carga de claves individuales
+    a_load() {
+      if (this.tab === 'PLATS') return this.a_loadLoadset();
+      if (this.tab !== 'KEYS') {
+        this.message = 'Seleccione claves en la pestaña Keys o un loadset en Plats.';
+        return;
+      }
+      const keys = this.selected.map((id) => this.keyById(id)).filter(Boolean);
+      if (!keys.length) {
         this.message = 'Seleccione al menos una clave.';
         return;
       }
-      this.nav('ISSUE_CONFIRM');
-    }
-
-    a_setProtocol(p) {
-      if (p === 'DS-101' || p === 'DS-102') {
-        this.protocol = p;
-        this.log('CONFIGURACION', `Protocolo de llenado ${p}`);
-      }
-    }
-
-    a_setTarget(t) {
-      if (TARGETS[t]) this.target = t;
-    }
-
-    a_issueGo() {
-      if (!this.selected.length) return;
-      this.issue = { queue: this.selected.slice(), idx: 0, results: [], target: this.target };
-      this.nav('ISSUING');
-      this.issueStep();
-    }
-
-    issueStep() {
-      const job = this.issue;
-      if (!job) return;
-      if (job.idx >= job.queue.length) {
-        this.selected = [];
-        this.nav('ISSUE_RESULT');
+      const bad = keys.find((k) => this.keyStatus(k) === 'TAG');
+      if (bad) {
+        this.message = `${bad.tag}: es solo una etiqueta (KEY TAG), falta la variable.`;
         return;
       }
-      this.after(1200, () => {
-        if (this.issue !== job) return;
-        const key = this.keyById(job.queue[job.idx]);
-        let r;
-        if (!key) r = { ok: false, reason: 'Clave inexistente' };
-        else if (this.isExpired(key)) r = { ok: false, reason: 'Clave CADUCADA: emisión bloqueada por el SKL' };
-        else if (this.isPending(key)) r = { ok: false, reason: 'Clave aún no vigente' };
-        else r = this.env.fill(key, this.protocol, job.target);
-        if (key && r.ok) key.issued++;
-        const where = job.target === 'KYK13' ? 'posición ' + r.slot : 'slot ' + SIM.pad(r.slot);
-        job.results.push({ tag: key ? key.tag : job.queue[job.idx], ok: r.ok, reason: r.reason, slot: r.slot, where, overwritten: r.overwritten });
-        this.log('EMISION (FILL)', `${key ? key.tag : '?'} -> ${TARGETS[job.target]} ${r.ok ? where : ''} [${this.protocol}]${r.ok ? '' : ' : ' + r.reason}`, r.ok);
-        job.idx++;
+      const red = keys.find((k) => this.keyStatus(k) === 'RED');
+      if (red) {
+        this.message = `${red.tag}: clave caducada (RED KEY). No se puede cargar; destrúyala (View > Expired Keys).`;
+        this.log('CARGA RECHAZADA', `${red.tag} caducada`, false);
+        return;
+      }
+      this.dialog = 'LOAD';
+    }
+    a_setProtocol(p) {
+      if (p === 'DS-101' || p === 'DS-102') this.protocol = p;
+    }
+    a_setActivation(a) {
+      this.activation = a;
+    }
+    a_loadOk() {
+      const queue = this.selected.slice();
+      this.send = { queue, idx: 0, stage: 'READY', protocol: this.protocol, activation: this.protocol === 'DS-102' ? this.activation : 'DS-101' };
+      this.dialog = null;
+      this.screen = 'SEND';
+    }
+    a_readyOk() {
+      if (!this.send) return;
+      this.send.stage = 'WAIT';
+      this.log('CARGA', `Preparada ${this.currentSendKey().tag} [${this.send.protocol}${this.send.protocol === 'DS-102' ? ' ' + this.send.activation : ''}]`);
+    }
+    a_cancelSend() {
+      if (this.send && this.send.stage !== 'DONE') this.log('CARGA', 'Cancelada por el operador', false);
+      this.send = null;
+      this.nav('UAS');
+    }
+    a_nextKey() {
+      if (!this.send) return;
+      this.send.idx++;
+      this.send.stage = this.send.idx < this.send.queue.length ? 'READY' : 'DONE';
+    }
+    currentSendKey() {
+      return this.send ? this.keyById(this.send.queue[this.send.idx]) : null;
+    }
+
+    /** La radio pide la clave (ENT en «PRESS ENTER TO INITIATE»). */
+    providePull(req, conn) {
+      if (conn.j1 !== 'SKL') return { ok: false, reason: 'No hay dispositivo de llenado conectado en J1' };
+      if (req.device === 'CYZ10-RDS') return { ok: false, wait: true, reason: 'Esperando loadset' };
+      if (!this.power || !this.user || !this.send || this.send.stage !== 'WAIT') {
+        return { ok: false, wait: true, reason: 'El SKL no estaba en «Press INITIATE button…» cuando se pulsó ENT en la radio' };
+      }
+      const s = this.send;
+      const want = req.device === 'KYK-13' ? 'DS-102' : 'DS-101';
+      if (s.protocol !== want) {
+        this.log('CARGA', `Fallo: la radio espera ${want} y el SKL envía ${s.protocol}`, false);
+        return { ok: false, reason: `Protocolo distinto: la radio (FILL DEVICE ${req.device}) espera ${want} y el SKL envía ${s.protocol}` };
+      }
+      if (want === 'DS-102' && s.activation !== 'KYK-13') return { ok: false, reason: 'En DS-102 el modo de activación debe ser KYK-13' };
+      const key = this.currentSendKey();
+      key.issued++;
+      s.stage = 'SENT';
+      this.log('CLAVE TRANSMITIDA', `${key.tag} -> AN/PRC-117F (${req.crypto} ${req.keyType}${req.keyType === 'KEK' || req.keyType === 'TRKEK' ? '' : ' ' + SIM.pad(req.num)}) [${s.protocol}]`);
+      this.changed();
+      return { ok: true, key: { tag: key.tag, bank: key.bank, type: key.type }, protocol: s.protocol };
+    }
+
+    // ---- loadset SINCGARS por ICOM
+    a_selectLoadset(name) {
+      this.selLoadset = this.selLoadset === name ? null : name;
+    }
+    a_loadLoadset() {
+      const ls = this.loadsets.find((l) => l.name === this.selLoadset);
+      if (!ls) {
+        this.message = 'Seleccione un loadset en la pestaña Plats.';
+        return;
+      }
+      this.icom = { ls, includeTime: false, stage: 'MODE', status: [] };
+      this.screen = 'ICOM';
+    }
+    a_icomTime() {
+      if (this.icom) this.icom.includeTime = !this.icom.includeTime;
+    }
+    a_icomNext() {
+      const order = ['MODE', 'WIZARD', 'CONNECT', 'PROFILES'];
+      const i = order.indexOf(this.icom.stage);
+      if (i >= 0 && i < order.length - 1) this.icom.stage = order[i + 1];
+    }
+    a_icomSend() {
+      const ic = this.icom;
+      if (!ic || ic.stage !== 'PROFILES') return;
+      const r = this.env.pushLoadset(ic.ls, ic.includeTime);
+      ic.stage = 'SENDING';
+      ic.status = ['Initializing Fill Port…', 'Press LOAD Button.'];
+      if (!r.ok) {
+        this.after(1200, () => {
+          ic.stage = 'FAIL';
+          ic.status.push('Error: ' + r.reason);
+          this.log('LOADSET', `${ic.ls.name}: fallo (${r.reason})`, false);
+          this.changed();
+        });
+        return;
+      }
+      const steps = [...ic.ls.teks.map((_, i) => `Sending TEK #${i + 1}`), 'Sending KEK #6', 'Sending Cold Start TSK', ...ic.ls.hopsets.map((_, i) => `Sending Hopset #${i + 1}`), 'Sending Lockouts'];
+      steps.forEach((st, i) => this.after(250 * (i + 1), () => {
+        ic.status.push(st);
         this.changed();
-        this.issueStep();
+      }));
+      this.after(250 * (steps.length + 1), () => {
+        ic.stage = 'DONE';
+        ic.status.push('ICOM transfer successful. Re-load equipment.');
+        this.log('LOADSET', `${ic.ls.name} -> AN/PRC-117F (ICOM${ic.includeTime ? ', con hora' : ''})`);
+        this.changed();
       });
     }
-
-    a_newKey(arg) {
-      const [type, alg] = String(arg).split(':');
-      if (!KEY_TYPES[type]) return;
-      let tag;
-      do tag = `ENT-${type}-${String(Math.floor(this.env.random() * 900) + 100)}`;
-      while (this.keyById(tag));
-      const k = makeKey(this.env.now(), tag, type, 'Clave generada para entrenamiento', 0, 30, alg);
-      this.keys.push(k);
-      this.log('GENERACION', `${tag} (${type})`);
-      this.detailId = tag;
-      this.nav('DETAIL');
-    }
-
-    a_askDelete(id) {
-      if (!this.keyById(id)) return;
-      this.detailId = id;
-      this.nav('DEL_CONFIRM');
-    }
-    a_delete(id) {
-      const k = this.keyById(id);
-      if (!k) return;
-      this.keys = this.keys.filter((x) => x.id !== id);
-      this.selected = this.selected.filter((x) => x !== id);
-      this.log('BORRADO DE CLAVE', k.tag);
-      this.nav('KEYS');
-    }
-
-    a_zeroize() {
-      const n = this.keys.length;
-      this.keys = [];
-      this.selected = [];
-      this.log('ZEROIZE', `${n} claves eliminadas`);
-      this.nav('HOME');
-      this.message = 'Zeroize completado: base de datos vacía.';
-    }
-
-    a_restoreDb() {
-      this.keys = defaultKeys(this.env.now());
-      this.selected = [];
-      this.log('RESTAURAR BD', 'Base de datos de entrenamiento');
-      this.message = 'Base de datos de entrenamiento restaurada.';
+    a_icomClose() {
+      this.icom = null;
+      this.nav('UAS');
     }
 
     // ---------------------------------------------------------------- persistencia
     serialize() {
-      return { keys: this.keys, audit: this.audit.slice(0, 100), protocol: this.protocol, target: this.target, locked: this.locked, attempts: this.attempts };
+      return { v: 2, keys: this.keys, loadsets: this.loadsets, audit: this.audit.slice(0, 150), locked: this.locked, attempts: this.attempts, protocol: this.protocol, activation: this.activation, battery: this.battery };
     }
     load(o) {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.type);
+      if (!o || typeof o !== 'object' || o.v !== 2) return;
+      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.bank);
+      if (Array.isArray(o.loadsets)) this.loadsets = o.loadsets.filter((l) => l && l.name && Array.isArray(l.hopsets));
       if (Array.isArray(o.audit)) this.audit = o.audit.filter((a) => a && a.action);
-      if (o.protocol === 'DS-101' || o.protocol === 'DS-102') this.protocol = o.protocol;
-      if (TARGETS[o.target]) this.target = o.target;
-      this.keys.forEach((k) => { if (k.type === 'TEK' && !k.alg) k.alg = 'VINSON'; });
       if (typeof o.locked === 'boolean') this.locked = o.locked;
       if (Number.isInteger(o.attempts)) this.attempts = o.attempts;
+      if (o.protocol === 'DS-101' || o.protocol === 'DS-102') this.protocol = o.protocol;
+      if (typeof o.activation === 'string') this.activation = o.activation;
+      if (Number.isFinite(o.battery)) this.battery = Math.max(2, Math.min(100, o.battery));
       this.changed();
     }
   }
 
-  SKL.TRAINING_PIN = TRAINING_PIN;
-  SKL.KEY_TYPES = KEY_TYPES;
+  SKL.ACCOUNTS = ACCOUNTS;
+  SKL.PLATFORMS = PLATFORMS;
+  SKL.EQUIPMENT = EQUIPMENT;
   SKL.defaultKeys = defaultKeys;
-  SKL.TARGETS = TARGETS;
   SIM.SKL = SKL;
 })(typeof window !== 'undefined' ? window : globalThis);

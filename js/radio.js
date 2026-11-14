@@ -1,178 +1,220 @@
 /*
  * Modelo de la radio AN/PRC-117F (simulación de entrenamiento).
  *
- * Modela el panel frontal: perilla de función, teclado, pantalla de 4 líneas,
- * presets, ranuras (slots) de claves COMSEC/TRANSEC, modos LOS, SINCGARS,
- * HAVE QUICK II y SATCOM, autoprueba (BIT), sincronización TOD, carga de
- * claves (LD) y borrado de emergencia (zeroize).
+ * Basado en los procedimientos del manual de operación y del curso de
+ * operador (carpeta Manuals/):
+ *   - Interruptor de función: OFF, PT, CT, TD, RV, LD, Z-ALL, CLR.
+ *   - KDU: teclas numéricas con doble función (1 CALL, 2 LT, 3 MODE, 4 SQ,
+ *     5 ZERO, 6 ▲, 7 OPT, 8 PGM, 9 ▼, 0 ⟳), CLR, ENT, ◄ ►, VOL ±, PRE ±.
+ *   - 100 presets de red (00-99) LOS / SATCOM / salto de frecuencia
+ *     (SINCGARS, HAVEQUICK) y 10 redes DAMA.
+ *   - Bancos COMSEC: VINSON, ANDVT y KG-84 (TEK 01-25, KEK, TrKEK),
+ *     TSK de satélite y SINCGARS (01-25) y MWOD HAVEQUICK (01-31).
+ *   - Menú FILL en LD: FILL DEVICE / CRYPTO TYPE / KEY TYPE / KEY NUMBER.
  *
- * No contiene algoritmos ni datos criptográficos reales: las "claves" son
+ * No contiene algoritmos ni material criptográfico real: las claves son
  * etiquetas de entrenamiento.
  */
 (function (g) {
   'use strict';
   const SIM = g.SIM;
-  const { pad, fit, lr } = SIM;
+  const { pad, fit, lr, blink } = SIM;
 
-  const W = 22; // caracteres por línea de pantalla
-  const MODES = ['LOS', 'SINCGARS', 'HQ', 'SATCOM'];
-  const MODE_SHORT = { LOS: 'LOS', SINCGARS: 'SINC', HQ: 'HQII', SATCOM: 'SAT' };
-  const POWER = [
-    { id: 'BAJA', w: 1, km: 4 },
-    { id: 'MEDIA', w: 5, km: 10 },
-    { id: 'ALTA', w: 10, km: 16 },
-    { id: 'MAX', w: 20, km: 25 },
-  ];
-  const NUM_PRESETS = 10;
-  const NUM_SLOTS = 12;
-  const KNOB = ['Z', 'OFF', 'ON', 'LD', 'RMT'];
-  const BANDS = { FM: [30, 512], AM: [90, 400] };
-  // Banda UHF SATCOM: subida (TX) 292-318 MHz, bajada (RX) 243-270 MHz
-  const SAT_BANDS = { satTx: [292, 318], satRx: [243, 270] };
-  const CRYPTO_MODES = ['VINSON', 'ANDVT'];
-  const SATS = ['SAT-1', 'SAT-2', 'SAT-3', 'SAT-4'];
-  const DECIMAL_FIELDS = ['freq', 'satTx', 'satRx'];
-
-  const powerOf = (id) => POWER.find((p) => p.id === id) || POWER[2];
-  const slotOpts = () => Array.from({ length: NUM_SLOTS }, (_, i) => i + 1);
-  const transecType = (mode) => (mode === 'SINCGARS' ? 'TSK' : mode === 'HQ' ? 'WOD' : null);
-
-  function defaultPresets() {
-    return Array.from({ length: NUM_PRESETS }, (_, i) => ({
-      name: i === 0 ? 'MANDO' : 'P' + pad(i + 1),
-      mode: 'LOS',
-      mod: 'FM',
-      freq: i === 0 ? 40 : 30,
-      bw: 25,
-      power: 'ALTA',
-      traffic: 'VOZ',
-      crypto: 'PT',
-      cryptoMode: 'VINSON',
-      keySlot: 1,
-      transecSlot: 1,
-      netId: 0,
-      hqNet: 0,
-      satType: 'DEDICADO',
-      satTx: 292,
-      satRx: 243,
-      satBw: 25,
-      damaSat: 'SAT-1',
-      damaNet: 0,
-      damaAddr: 0,
-    }));
-  }
-
-  const FIELDS = {
-    mode: { label: 'MODO', type: 'enum', options: () => MODES },
-    mod: { label: 'MODULACION', type: 'enum', options: () => ['FM', 'AM'] },
-    freq: { label: 'FREC', type: 'num', fmt: (v) => v.toFixed(4) },
-    bw: { label: 'CANAL', type: 'enum', options: () => [25, 12.5], fmt: (v) => v + 'K' },
-    netId: { label: 'RED SINC', type: 'num', fmt: (v) => pad(v, 3) },
-    hqNet: { label: 'RED HQ', type: 'num', fmt: (v) => pad(v, 3) },
-    satType: { label: 'TIPO SAT', type: 'enum', options: () => ['DEDICADO', 'DAMA'] },
-    satTx: { label: 'FREC TX', type: 'num', fmt: (v) => v.toFixed(4) },
-    satRx: { label: 'FREC RX', type: 'num', fmt: (v) => v.toFixed(4) },
-    satBw: { label: 'CANAL', type: 'enum', options: () => [5, 25], fmt: (v) => v + 'K' },
-    damaSat: { label: 'SATELITE', type: 'enum', options: () => SATS },
-    damaNet: { label: 'RED DAMA', type: 'num', fmt: (v) => pad(v, 2) },
-    damaAddr: { label: 'DIR TERMINAL', type: 'num', fmt: (v) => pad(v, 5) },
-    transecSlot: { label: 'SLOT TRANSEC', type: 'enum', options: slotOpts, fmt: (v) => 'S' + pad(v) },
-    power: { label: 'POTENCIA', type: 'enum', options: () => POWER.map((p) => p.id), fmt: (v) => v + ' ' + powerOf(v).w + 'W' },
-    traffic: { label: 'TRAFICO', type: 'enum', options: () => ['VOZ', 'DATOS'] },
-    crypto: { label: 'CIFRADO', type: 'enum', options: () => ['PT', 'CT'] },
-    cryptoMode: { label: 'MODO CRIPTO', type: 'enum', options: () => CRYPTO_MODES },
-    keySlot: { label: 'SLOT TEK', type: 'enum', options: slotOpts, fmt: (v) => 'S' + pad(v) },
+  const W = 22;
+  const SW = ['CLR', 'ZALL', 'OFF', 'PT', 'CT', 'TD', 'RV', 'LD'];
+  const SW_LABEL = { CLR: 'CLR', ZALL: 'Z-ALL', OFF: 'OFF', PT: 'PT', CT: 'CT', TD: 'TD', RV: 'RV', LD: 'LD' };
+  const POWERS = [1, 1.3, 1.6, 2, 2.5, 3, 4, 5, 6.3, 8, 10, 13, 16, 20];
+  const NUM_NETS = 100;
+  const NUM_DAMA = 10;
+  const NUM_DEST = 50;
+  const FILL_DEVICES = ['CYZ-10 DS-101', 'KYK-13', 'CYZ10-RDS', 'KOI-18', 'MX-18290'];
+  const CRYPTO_TYPES = ['VINSON', 'ANDVT', 'KG-84', 'SATELLITE', 'HAVEQUICK', 'SINCGARS'];
+  const KEY_TYPES = {
+    VINSON: ['TEK', 'KEK', 'TRKEK'],
+    ANDVT: ['TEK', 'KEK', 'TRKEK'],
+    'KG-84': ['TEK', 'KEK', 'TRKEK'],
+    SATELLITE: ['TSK', 'TRKEK'],
+    HAVEQUICK: ['WOD', 'TRKEK'],
+    SINCGARS: ['TSK', 'TRKEK'],
   };
+  /** Banco de claves que usa cada modo cripto del preset. */
+  const BANK_OF = { VINSON: 'VINSON', 'KYV-5': 'VINSON', FASCINATOR: 'VINSON', ANDVT: 'ANDVT', 'KG-84': 'KG-84' };
+  const NET_TYPES = ['LOS FIX FREQUENCY', 'SATCOM', 'FREQUENCY HOPPING'];
+  const OP_MODES = ['NORMAL', 'DAMA', 'TEST', 'SCAN', 'BEACON', 'REMOTE CONTROL', 'CLONE'];
+  const PRECEDENCE = ['ROUTINE', 'PRIORITY', 'IMMEDIATE', 'FLASH', 'FLASH OVERRIDE', 'EMERGENCY ACTION'];
 
-  function fieldLabel(name, p) {
-    if (name === 'transecSlot') return p.mode === 'HQ' ? 'SLOT WOD' : 'SLOT TSK';
-    return FIELDS[name].label;
-  }
-  function fieldValue(name, p) {
-    const f = FIELDS[name];
-    return f.fmt ? f.fmt(p[name]) : String(p[name]);
+  const r5 = (v) => Math.round(v * 1e5) / 1e5;
+  /** Columnas alineadas con «TYPE ADF DATA MODE SQL». */
+  const cols = (a, b, c, d, e) => a.padEnd(5) + b.padEnd(4) + c.padEnd(5) + d.padEnd(5) + e;
+  const f5 = (v) => r5(v).toFixed(5).padStart(9, '0'); // 035.10000
+
+  /**
+   * Tabla de códigos de frecuencia SATCOM de ENTRENAMIENTO (ficticia).
+   * Como en la radio real: 1-8 y 240-248 no se usan, 9-128 son canales de
+   * 25 kHz, 129-239 de 5 kHz y 999 es entrada manual de frecuencias.
+   */
+  function satCode(c) {
+    if (c === 999) return { manual: true };
+    if (!Number.isInteger(c) || c < 9 || c > 239) return null;
+    const bw = c <= 128 ? 25 : 5;
+    const rx = bw === 25 ? 243.5 + (c - 9) * 0.2 : 243.505 + (c - 129) * 0.2;
+    return { bw, rx: r5(rx), tx: r5(rx + 48.5) };
   }
 
-  function fieldsFor(p) {
-    const f = ['mode'];
-    if (p.mode === 'LOS') f.push('mod', 'freq', 'bw');
-    if (p.mode === 'SINCGARS') f.push('netId', 'transecSlot');
-    if (p.mode === 'HQ') f.push('hqNet', 'transecSlot');
-    if (p.mode === 'SATCOM') {
-      f.push('satType');
-      if (p.satType === 'DAMA') f.push('damaSat', 'damaNet', 'damaAddr', 'satBw');
-      else f.push('satTx', 'satRx', 'satBw');
-    }
-    f.push('power', 'traffic', 'crypto');
-    if (p.crypto === 'CT') f.push('cryptoMode', 'keySlot');
-    return f;
+  function emptyBanks() {
+    const arr = (n) => new Array(n).fill(null);
+    return {
+      VINSON: { TEK: arr(25), KEK: null, TRKEK: null },
+      ANDVT: { TEK: arr(25), KEK: null, TRKEK: null },
+      'KG-84': { TEK: arr(25), KEK: null, TRKEK: null },
+      SATELLITE: { TSK: arr(25), TRKEK: null },
+      SINCGARS: { TSK: arr(25), TRKEK: null },
+      HAVEQUICK: { WOD: arr(31), TRKEK: null },
+    };
   }
 
-  function validateNum(name, v, p) {
-    if (!Number.isFinite(v)) return 'VALOR INVALIDO';
-    if (name === 'satTx' || name === 'satRx') {
-      const [lo, hi] = SAT_BANDS[name];
-      if (v < lo || v > hi) return `RANGO ${name === 'satTx' ? 'TX' : 'RX'} ${lo}-${hi}`;
-      if (Math.abs(v * 1e4 - Math.round(v * 1e4)) > 1e-6) return 'MAX 4 DECIMALES';
-      return null;
-    }
-    if (name === 'freq') {
-      const [lo, hi] = BANDS[p.mod];
-      if (v < lo || v > hi) return `RANGO ${p.mod} ${lo}-${hi}`;
-      if (Math.abs(v * 1e4 - Math.round(v * 1e4)) > 1e-6) return 'MAX 4 DECIMALES';
-      return null;
-    }
-    if (!Number.isInteger(v)) return 'SOLO ENTEROS';
-    if (name === 'netId' || name === 'hqNet') return v < 0 || v > 999 ? 'RANGO 000-999' : null;
-    if (name === 'damaNet') return v < 0 || v > 99 ? 'RANGO 00-99' : null;
-    if (name === 'damaAddr') return v < 1 || v > 99999 ? 'RANGO 00001-99999' : null;
-    return null;
+  function defNet(i) {
+    return {
+      name: 'NET' + i,
+      active: i < 10,
+      type: 'LOS',
+      hop: 'SINCGARS',
+      rx: 30,
+      tx: 30,
+      rxOnly: false,
+      code: 999,
+      crypto: 'NONE',
+      key: 1,
+      analog: false,
+      frames: 20,
+      preamble: 'STANDARD',
+      autosw: 'ENABLE',
+      mod: 'FM',
+      dev: '8.0 KHZ',
+      voice: 'MELP',
+      opt: '010',
+      sq: 'TONE',
+      dsq: 'OFF',
+      power: 10,
+      hopset: 1,
+      lne: 'OFF',
+      hqNet: '00.000',
+    };
   }
+  function defDama(i) {
+    return { name: 'DAMANET' + i, channel: 1, txCap: 'FULL', ckp: 'NO', cfg: i, ranging: 'ACTIVE', tba: 1, guard: [], ow: 'ON', tskLoc: 1, power: 20 };
+  }
+  function defCfg(i) {
+    return { name: 'DAMACFG' + i, crypto: 'ANDVT', key: 1, frames: 20, voice: 'MELP', code25: '060', code5: '060' };
+  }
+  function defDest(i) {
+    return { name: 'DAMADEST' + i, ac25: [], nb5: 0 };
+  }
+
+  /** Potencia máxima/mínima según banda, modulación y tipo de red (curso, LOS (5) y SATCOM (8)). */
+  function powerRange(n) {
+    if (n.type === 'SAT') return [2, 20];
+    if (n.type === 'HOP') return [1, 10];
+    const f = n.tx;
+    if (f < 90) return [1, 10];
+    if (n.mod === 'AM') return [1, f < 400 ? 10 : 4];
+    return [1, f < 400 ? 20 : 10];
+  }
+  function powerOptions(n) {
+    const [lo, hi] = powerRange(n);
+    return POWERS.filter((p) => p >= lo && p <= hi);
+  }
+  function cryptoOptions(n) {
+    if (n.type === 'LOS') return ['NONE', 'VINSON', 'KG-84', n.rx <= 87.975 ? 'KYV-5' : 'FASCINATOR'];
+    if (n.type === 'SAT') {
+      const sc = satCode(n.code);
+      const bw = sc && !sc.manual ? sc.bw : 25;
+      return bw === 5 ? ['NONE', 'ANDVT', 'KG-84'] : ['NONE', 'VINSON', 'ANDVT', 'KG-84', 'FASCINATOR'];
+    }
+    if (n.hop === 'SINCGARS') return ['NONE', 'VINSON', 'KYV-5'];
+    return ['NONE', 'VINSON'];
+  }
+  /** Ancho de canal SATCOM del preset (5 o 25 kHz). */
+  function satBw(n) {
+    const sc = satCode(n.code);
+    return sc && !sc.manual ? sc.bw : 25;
+  }
+  function satFreqs(n) {
+    const sc = satCode(n.code);
+    if (sc && !sc.manual) return { rx: sc.rx, tx: sc.tx };
+    return { rx: n.rx, tx: n.tx };
+  }
+  /** Banda de antena necesaria: J5 (VHF baja) o J8 (VHF alta/UHF). */
+  function antennaPort(n) {
+    if (n.type === 'SAT') return 'J8';
+    if (n.type === 'HOP') return n.hop === 'SINCGARS' ? 'J5' : 'J8';
+    return n.rx < 90 ? 'J5' : 'J8';
+  }
+  /** Distancia útil aproximada (km) en tierra según la potencia en vatios. */
+  const rangeKm = (w) => Math.round(5.6 * Math.sqrt(w) * 10) / 10;
 
   class Radio extends SIM.Device {
     /**
-     * env.getConn() -> { antenna: 'NONE'|'WHIP'|'SATCOM', handset: bool, fillDevice: 'NONE'|'SKL'|'KYK13' }
+     * env.getConn() -> { j1: 'NONE'|'HANDSET'|'SKL', j5: bool, j8: 'NONE'|'FLEX'|'SATCOM', az, el }
+     * env.fillPull(req) -> { ok, key?, reason?, wait? }      (petición de clave al equipo de llenado)
+     * env.net -> red simulada (para RSSI, DAMA y TOD por CALL); opcional
      */
     constructor(env) {
       super(env);
-      if (!this.env.getConn) this.env.getConn = () => ({ antenna: 'WHIP', handset: true, fillDevice: 'SKL' });
+      if (!this.env.getConn) this.env.getConn = () => ({ j1: 'HANDSET', j5: true, j8: 'FLEX', az: 0, el: 0 });
+      if (!this.env.fillPull) this.env.fillPull = () => ({ ok: false, reason: 'Sin dispositivo de llenado' });
       this.hardReset();
     }
 
     hardReset() {
       this.clearTimers();
-      this.knob = 'OFF';
+      this.sw = 'OFF';
       this.booted = false;
-      this.presets = defaultPresets();
-      this.slots = new Array(NUM_SLOTS).fill(null);
-      this.cur = 0;
+      this.blackReset = false;
+      this.resetBlack();
+      this.keys = emptyBanks();
       this.volume = 4;
-      this.light = false;
-      this.squelch = true;
-      this.keyTone = true;
-      this.bitResult = null;
-      this.todValid = false;
-      this.dama = null;
+      this.light = 0;
       this.battery = 100;
-      this.ldSlot = 1;
+      this.todHQ = null;
+      this.todSinc = null;
+      this.bitResult = null;
+      this.lastRssi = null;
+      this.mode = 'NORMAL';
+      this.dama = null;
       this.screen = { id: 'OFF' };
       this.stack = [];
       this.msg = null;
       this.tx = false;
       this.rx = null;
       this.page = 0;
+      this.hazards = 0;
+      this.etiMin = 0;
       this.changed();
     }
 
-    get preset() {
-      return this.presets[this.cur];
-    }
-    /** La radio está encendida, arrancada y operando en ON (no LD/RMT). */
-    get operating() {
-      return this.booted && this.knob === 'ON';
+    /** Datos «negros» (programación) a valores de fábrica. */
+    resetBlack() {
+      this.nets = Array.from({ length: NUM_NETS }, (_, i) => defNet(i));
+      this.damaNets = Array.from({ length: NUM_DAMA }, (_, i) => defDama(i));
+      this.damaCfgs = Array.from({ length: NUM_DAMA }, (_, i) => defCfg(i));
+      this.damaDests = Array.from({ length: NUM_DEST }, (_, i) => defDest(i));
+      this.cur = 0;
+      this.damaCur = 0;
     }
 
-    flash(text, ms = 2000) {
+    get net() {
+      return this.nets[this.cur];
+    }
+    /** Encendida en PT, CT o TD (operación normal). */
+    get operating() {
+      return this.booted && ['PT', 'CT', 'TD'].includes(this.sw);
+    }
+    get secure() {
+      return this.sw === 'CT' || this.sw === 'TD';
+    }
+
+    flash(text, ms = 2200) {
       const token = {};
       this._msgToken = token;
       this.msg = text;
@@ -184,44 +226,51 @@
       });
       this.changed();
     }
-
     go(screen) {
       this.stack.push(this.screen);
       this.screen = screen;
+      if (screen.id === 'WIZ') this.initEdit();
     }
     back() {
       this.screen = this.stack.pop() || { id: 'MAIN' };
+      if (this.screen.id === 'WIZ') this.initEdit();
+    }
+    home() {
+      this.stack = [];
+      this.screen = this.sw === 'LD' ? this.fillMenu() : this.sw === 'RV' ? { id: 'RV' } : { id: 'MAIN' };
+      if (this.screen.id === 'WIZ') this.initEdit();
     }
 
-    // ---------------------------------------------------------------- perilla
-    setKnob(pos) {
-      if (!KNOB.includes(pos) || pos === this.knob || this.knob === 'Z') return;
-      if (pos === 'Z') {
-        const back = this.knob;
-        this.knob = 'Z';
-        this.zeroizeAll('PERILLA Z');
-        if (this.booted) {
-          this.stack = [];
-          this.screen = { id: 'ZMSG' };
-        }
-        this.changed();
-        // la posición Z tiene retorno por resorte
-        this.after(1200, () => {
-          this.knob = back;
-          if (this.booted) {
-            this.enterKnobScreen();
-            this.flash('CLAVES BORRADAS', 2500);
-          }
-          this.changed();
-        });
-        return;
-      }
-      const wasOff = this.knob === 'OFF';
-      this.knob = pos;
+    // ================================================================ interruptor
+    setSwitch(pos) {
+      if (!SW.includes(pos) || pos === this.sw) return;
+      const prev = this.sw;
+      this.sw = pos;
       if (pos === 'OFF') return this.powerOff();
+      if (pos === 'CLR') {
+        // desconecta la HUB: borra programación y COMSEC y apaga
+        this.powerOff();
+        this.resetBlack();
+        this.keys = emptyBanks();
+        this.blackReset = true;
+        this.emit('zeroize', { all: true, black: true, source: 'CLR' });
+        return this.changed();
+      }
+      if (pos === 'ZALL') {
+        this.zeroizeRed('Z-ALL');
+        this.stack = [];
+        this.screen = { id: 'ZALL' };
+        if (!this.booted) this.boot(true);
+        return this.changed();
+      }
       if (this.battery <= 0) return this.changed();
-      if (wasOff) this.boot();
-      else if (this.booted) this.enterKnobScreen();
+      if (prev === 'OFF' || prev === 'CLR' || !this.booted) this.boot();
+      else {
+        if (pos === 'LD' || pos === 'RV') this.mode = 'NORMAL';
+        this.dama = null;
+        this.home();
+        if (this.mode === 'DAMA' && this.operating) this.startDama();
+      }
       this.changed();
     }
 
@@ -230,433 +279,1068 @@
       this.booted = false;
       this.tx = false;
       this.rx = null;
-      this.todValid = false; // el reloj TOD se pierde al apagar
-      this.dama = null; // y el acceso a la red DAMA
+      this.todHQ = null; // el TOD no se mantiene entre encendidos
+      this.todSinc = null;
+      this.dama = null;
+      this.mode = this.mode === 'DAMA' ? 'DAMA' : 'NORMAL';
       this.screen = { id: 'OFF' };
       this.stack = [];
       this.msg = null;
       this.changed();
     }
 
-    boot() {
+    boot(quiet) {
       this.booted = false;
-      this.stack = [];
-      this.screen = { id: 'BOOT', step: 0 };
-      const steps = 4;
-      for (let i = 1; i <= steps; i++) {
-        this.after(550 * i, () => {
+      if (!quiet) {
+        this.stack = [];
+        this.screen = { id: 'BOOT', step: 0 };
+      }
+      for (let i = 1; i <= 4; i++) {
+        this.after(500 * i, () => {
+          if (quiet) {
+            if (i === 4) {
+              this.booted = true;
+              this.changed();
+            }
+            return;
+          }
           if (this.screen.id !== 'BOOT') return;
           this.screen.step = i;
-          if (i === steps) {
+          if (i === 4) {
             this.booted = true;
-            this.enterKnobScreen();
-            if (!this.slots.some(Boolean)) this.flash('AVISO: SIN CLAVES', 2500);
+            if (this.blackReset) {
+              this.screen = { id: 'NOTICE', lines: ['WARNING', 'BLACK DATA RESET', '', 'PRESS ANY KEY'], next: () => this.afterBoot() };
+            } else this.afterBoot();
           }
           this.changed();
         });
       }
     }
-
-    enterKnobScreen() {
-      this.stack = [];
-      if (this.knob === 'LD') this.screen = { id: 'LD', last: null };
-      else if (this.knob === 'RMT') this.screen = { id: 'RMT' };
-      else this.screen = { id: 'MAIN' };
+    afterBoot() {
+      this.blackReset = false;
+      if (this.sw === 'LD' || this.sw === 'RV') this.mode = 'NORMAL';
+      this.home();
+      if (this.mode === 'DAMA' && this.operating) this.startDama();
     }
 
-    // ---------------------------------------------------------------- teclado
+    // ================================================================ teclado
     press(key) {
-      if (!this.booted || this.knob === 'OFF' || this.knob === 'Z') return;
-      if (this.keyTone) this.emit('beep');
-      if (key === 'LUZ') {
-        this.light = !this.light;
+      if (!this.booted || this.sw === 'OFF' || this.sw === 'CLR') return;
+      this.emit('beep');
+      if (key === 'VOL+' || key === 'VOL-') {
+        this.volume = Math.max(0, Math.min(8, this.volume + (key === 'VOL+' ? 1 : -1)));
+        return this.flash('VOLUMEN ' + '#'.repeat(this.volume).padEnd(8, '.'), 1500);
+      }
+      if (this.screen.id === 'ZALL') return this.changed();
+      if (this.screen.id === 'NOTICE') {
+        const next = this.screen.next;
+        this.back();
+        if (next) next();
         return this.changed();
       }
-      if (this.knob === 'RMT') return this.flash('PANEL EN REMOTO');
       const h = this['key_' + this.screen.id];
       if (h) h.call(this, key);
       this.changed();
     }
 
+    /** Teclas de flecha: el 6 y el 9 hacen de ▲ ▼ fuera de los campos numéricos. */
+    static nav(key) {
+      if (key === '6') return 'UP';
+      if (key === '9') return 'DOWN';
+      return key;
+    }
+
     key_MAIN(k) {
-      const p = this.preset;
-      if (k === 'PRE+' || k === 'PRE-') {
-        this.cur = (this.cur + (k === 'PRE+' ? 1 : -1) + NUM_PRESETS) % NUM_PRESETS;
-        this.page = 0;
-        this.rx = null;
-      } else if (k === 'UP' || k === 'DOWN') {
-        const n = this.mainPages().length;
-        this.page = (this.page + (k === 'UP' ? n - 1 : 1)) % n;
-      } else if (k === 'CTPT') {
-        this.toggleCrypto();
-      } else if (k === 'MODE') {
-        const next = MODES[(MODES.indexOf(p.mode) + 1) % MODES.length];
-        this.applyField(p, 'mode', next);
-        this.page = 0;
-        this.flash('MODO ' + next);
-      } else if (k === 'PGM') {
-        this.go(this.menuPGM());
-      } else if (k === 'OPT') {
-        this.go(this.menuOPT());
-      } else if (k === 'ZERO') {
-        this.go({
-          id: 'CONFIRM',
-          lines: ['BORRAR TODAS', 'LAS CLAVES?', 'ENT=SI   CLR=NO'],
-          yes: () => {
-            this.zeroizeAll('TECLA ZERO');
-            this.enterKnobScreen();
-            this.flash('CLAVES BORRADAS', 2500);
-          },
-        });
-      } else if (/^[0-9]$/.test(k)) {
-        this.go({ id: 'PRESET_ENTRY', buf: k });
-      } else if (k === 'CLR') {
-        this.msg = null;
+      if (k === 'PRE+' || k === 'PRE-') return this.stepPreset(k === 'PRE+' ? 1 : -1);
+      switch (k) {
+        case '0':
+          this.page++;
+          return;
+        case '1':
+          return this.callKey();
+        case '2':
+          this.light = (this.light + 1) % 4;
+          return this.flash('LUZ ' + ['OFF', 'BAJA', 'MEDIA', 'ALTA'][this.light], 1200);
+        case '3':
+          return this.go(this.wizard('OPERATIONAL MODE', [this.f.choice('OPERATIONAL MODE', () => this.mode, (v) => this.setMode(v), () => OP_MODES)]));
+        case '4':
+          return this.go(this.wizard('SQ', this.sqFields(this.mode === 'DAMA' ? null : this.net)));
+        case '5':
+          return this.go(this.wizard('ZEROIZE', [
+            this.f.choice('ZEROIZE PROGRAMMING?', () => 'NO', (v) => {
+              if (v === 'YES') {
+                this.resetBlack();
+                this.emit('zeroize', { black: true, source: 'ZERO' });
+                this.flash('PROGRAMACION BORRADA');
+              }
+            }, () => ['NO', 'YES']),
+          ]));
+        case '7':
+          return this.go(this.menuOPT());
+        case '8':
+          return this.go(this.menuPGM());
+        default:
       }
     }
 
-    toggleCrypto() {
-      const p = this.preset;
-      if (p.crypto === 'CT') {
-        p.crypto = 'PT';
-        return this.flash('MODO PT (CLARO)');
+    stepPreset(dir) {
+      if (this.mode === 'DAMA') {
+        this.damaCur = (this.damaCur + dir + NUM_DAMA) % NUM_DAMA;
+        this.startDama();
+        return;
       }
-      const k = this.slots[p.keySlot - 1];
-      if (!k || k.type !== 'TEK') return this.flash(`S${pad(p.keySlot)} SIN TEK`);
-      p.crypto = 'CT';
-      this.flash('MODO CT (CIFRADO)');
+      const act = this.nets.map((n, i) => (n.active ? i : -1)).filter((i) => i >= 0);
+      if (!act.length) return this.flash('NO HAY PRESETS ACTIVOS');
+      let pos = act.indexOf(this.cur);
+      if (pos < 0) pos = 0;
+      else pos = Math.max(0, Math.min(act.length - 1, pos + dir)); // se detiene en los extremos
+      this.cur = act[pos];
+      this.page = 0;
+      this.rx = null;
     }
 
-    key_PRESET_ENTRY(k) {
+    setMode(v) {
+      if (v === 'NORMAL') {
+        this.mode = 'NORMAL';
+        this.dama = null;
+      } else if (v === 'DAMA') {
+        this.mode = 'DAMA';
+        this.after(0, () => this.startDama());
+      } else if (v === 'TEST') {
+        this.after(0, () => this.go(this.menuTEST()));
+      } else {
+        this.flash('MODO NO SIMULADO');
+      }
+      this.page = 0;
+    }
+
+    // ================================================================ campos (asistente)
+    get f() {
+      return {
+        choice: (label, get, set, options, fmt) => ({ kind: 'choice', label, get, set, options, fmt }),
+        num: (label, tmpl, get, set, validate, extra) => Object.assign({ kind: 'num', label, tmpl, get, set, validate }, extra || {}),
+        text: (label, get, set) => ({ kind: 'text', label, get, set }),
+        info: (label, lines) => ({ kind: 'info', label, lines }),
+      };
+    }
+
+    wizard(title, fields, done) {
+      return { id: 'WIZ', title, fields, i: 0, ed: null, done };
+    }
+
+    curField() {
       const s = this.screen;
-      if (/^[0-9]$/.test(k) && s.buf.length < 2) s.buf += k;
-      else if (k === 'CLR') this.back();
-      else if (k === 'ENT') {
-        const n = parseInt(s.buf, 10);
-        this.back();
-        if (n >= 1 && n <= NUM_PRESETS) {
-          this.cur = n - 1;
-          this.page = 0;
-        } else this.flash('PRESET INVALIDO');
+      return s.fields[s.i];
+    }
+
+    initEdit() {
+      const s = this.screen;
+      while (s.i < s.fields.length && s.fields[s.i].skip && s.fields[s.i].skip()) s.i++;
+      if (s.i >= s.fields.length) return;
+      const fd = s.fields[s.i];
+      if (fd.kind === 'choice') {
+        const opts = fd.options();
+        let val = fd.get();
+        if (!opts.includes(val)) val = opts[0];
+        s.ed = { val, opts };
+      } else if (fd.kind === 'num') {
+        const str = this.numStr(fd, fd.get());
+        s.ed = { chars: str.split(''), orig: str, cur: this.nextDigit(str, -1) };
+      } else if (fd.kind === 'text') {
+        s.ed = { chars: fd.get().split(''), cur: 0, lastKey: null, taps: 0, started: false };
+      } else s.ed = {};
+    }
+
+    numStr(fd, v) {
+      if (fd.fmt) return fd.fmt(v);
+      const digits = fd.tmpl.replace(/[^#]/g, '').length;
+      if (fd.tmpl.includes('.')) {
+        const dec = fd.tmpl.length - fd.tmpl.indexOf('.') - 1;
+        return Number(v).toFixed(dec).padStart(fd.tmpl.length, '0');
+      }
+      return String(v).padStart(digits, '0');
+    }
+    nextDigit(str, from) {
+      for (let i = from + 1; i < str.length; i++) if (/[0-9]/.test(str[i])) return i;
+      return -1;
+    }
+    prevDigit(str, from) {
+      for (let i = from - 1; i >= 0; i--) if (/[0-9]/.test(str[i])) return i;
+      return -1;
+    }
+
+    key_WIZ(k) {
+      const s = this.screen;
+      const fd = this.curField();
+      if (!fd) return this.back();
+      if (k === 'PRE+' || k === 'PRE-') {
+        // PRE± sale de la programación y vuelve a la operación
+        this.home();
+        return;
+      }
+      const ed = s.ed;
+      if (fd.kind === 'choice') {
+        const n = Radio.nav(k);
+        const i = ed.opts.indexOf(ed.val);
+        if (n === 'UP') ed.val = ed.opts[(i + ed.opts.length - 1) % ed.opts.length];
+        else if (n === 'DOWN') ed.val = ed.opts[(i + 1) % ed.opts.length];
+        else if (k === 'ENT') return this.commit(ed.val);
+        else if (k === 'CLR') return this.back();
+        return;
+      }
+      if (fd.kind === 'info') {
+        if (k === 'ENT') return this.commit(null);
+        if (k === 'CLR') return this.back();
+        return;
+      }
+      if (fd.kind === 'num') {
+        const str = ed.chars.join('');
+        if (/^[0-9]$/.test(k)) {
+          if (ed.cur < 0) return;
+          ed.chars[ed.cur] = k;
+          const nx = this.nextDigit(ed.chars.join(''), ed.cur);
+          if (nx >= 0) ed.cur = nx;
+        } else if (k === 'RIGHT') {
+          const nx = this.nextDigit(str, ed.cur);
+          if (nx >= 0) ed.cur = nx;
+        } else if (k === 'LEFT') {
+          const pv = this.prevDigit(str, ed.cur);
+          if (pv >= 0) ed.cur = pv;
+        } else if (k === 'CLR') {
+          const first = this.nextDigit(str, -1);
+          if (str === ed.orig) return this.back();
+          if (ed.cur === first) {
+            ed.chars = ed.orig.split('');
+          } else {
+            ed.chars[ed.cur] = '0';
+            ed.cur = this.prevDigit(str, ed.cur);
+          }
+        } else if (k === 'ENT') {
+          const raw = ed.chars.join('');
+          const v = fd.parse ? fd.parse(raw) : Number(raw);
+          const err = fd.validate ? fd.validate(v) : null;
+          if (err) {
+            ed.chars = ed.orig.split('');
+            ed.cur = this.nextDigit(ed.orig, -1);
+            return this.flash(err, 2500);
+          }
+          return this.commit(v);
+        }
+        return;
+      }
+      if (fd.kind === 'text') {
+        const MAP = { 1: '1ABC', 2: '2DEF', 3: '3GHI', 4: '4JKL', 5: '5MNO', 6: '6PQR', 7: '7STU', 8: '8VWX', 9: '9YZ', 0: '0' };
+        if (/^[0-9]$/.test(k)) {
+          if (!ed.started) {
+            ed.chars = [];
+            ed.started = true;
+          }
+          if (ed.lastKey === k && ed.chars.length) {
+            ed.taps = (ed.taps + 1) % MAP[k].length;
+            ed.chars[ed.cur] = MAP[k][ed.taps];
+          } else {
+            if (ed.lastKey !== null && ed.chars.length) ed.cur = Math.min(ed.cur + 1, 11);
+            ed.taps = 0;
+            ed.chars[ed.cur] = MAP[k][0];
+          }
+          ed.lastKey = k;
+        } else if (k === 'RIGHT') {
+          if (ed.chars.length) ed.cur = Math.min(ed.cur + 1, 11);
+          ed.lastKey = null;
+        } else if (k === 'LEFT') {
+          ed.cur = Math.max(0, ed.cur - 1);
+          ed.lastKey = null;
+        } else if (k === 'CLR') {
+          if (!ed.started) return this.back();
+          ed.chars = ed.chars.slice(0, Math.max(0, ed.cur));
+          ed.cur = Math.max(0, ed.cur - 1);
+          ed.lastKey = null;
+        } else if (k === 'ENT') {
+          const name = ed.chars.join('').replace(/\s+/g, '').slice(0, 12);
+          if (!name) return this.flash('NOMBRE VACIO');
+          if (fd.validate) {
+            const err = fd.validate(name);
+            if (err) return this.flash(err, 2500);
+          }
+          return this.commit(name);
+        }
       }
     }
 
-    // ---------------------------------------------------------------- menús
+    commit(v) {
+      const s = this.screen;
+      const fd = this.curField();
+      if (fd.set) {
+        const err = fd.set(v);
+        if (typeof err === 'string') return this.flash(err, 2500);
+      }
+      if (this.screen !== s) return; // set() cambió de pantalla
+      s.i++;
+      while (s.i < s.fields.length && s.fields[s.i].skip && s.fields[s.i].skip()) s.i++;
+      if (s.i >= s.fields.length) {
+        this.back();
+        if (s.done) s.done();
+        return;
+      }
+      this.initEdit();
+    }
+
+    // ================================================================ menús «USE < > TO SELECT ITEM»
+    menu(title, items, extra) {
+      return Object.assign({ id: 'MENU', title, items, idx: 0 }, extra || {});
+    }
+    key_MENU(k) {
+      const s = this.screen;
+      const items = typeof s.items === 'function' ? s.items() : s.items;
+      if (k === 'RIGHT' || Radio.nav(k) === 'DOWN') s.idx = (s.idx + 1) % items.length;
+      else if (k === 'LEFT' || Radio.nav(k) === 'UP') s.idx = (s.idx + items.length - 1) % items.length;
+      else if (k === 'CLR') this.back();
+      else if (k === 'PRE+' || k === 'PRE-') this.home();
+      else if (k === 'ENT') {
+        const it = items[s.idx];
+        if (it.run) it.run();
+        else this.flash('NO SIMULADO');
+      }
+    }
+    notSim() {
+      return { label: '', run: () => this.flash('NO SIMULADO') };
+    }
+
     menuPGM() {
-      return {
-        id: 'MENU',
-        title: 'PROGRAMACION',
-        idx: 0,
-        items: () => [
-          { label: 'PRESETS', run: () => this.go(this.menuPresets()) },
-          { label: 'CLAVES COMSEC', run: () => this.go(this.menuSlots()) },
-          { label: 'SINCRONIZAR TOD', run: () => this.startTod() },
-          { label: 'ACCESO DAMA', run: () => this.startDama() },
-          { label: 'AUTOPRUEBA BIT', run: () => this.startBit() },
-          { label: 'INFORMACION', run: () => this.go({ id: 'INFO' }) },
-        ],
-      };
+      return this.menu('PGM', [
+        { label: 'NORM', run: () => this.go(this.menu('NORM', [
+          { label: 'NET', run: () => this.go(this.wizard('NET', [this.selectNetField()])) },
+          { label: 'GENERAL' },
+          { label: 'EXCLBAND' },
+        ])) },
+        { label: 'DAMA', run: () => this.go(this.menuDAMA()) },
+        { label: 'SCAN' },
+        { label: 'PORTS' },
+        { label: 'SECUR' },
+        { label: 'CFIG' },
+      ]);
     }
 
-    menuPresets() {
-      return {
-        id: 'MENU',
-        title: 'PRESETS',
-        idx: this.cur,
-        items: () =>
-          this.presets.map((p, i) => ({
-            label: `P${pad(i + 1)} ${fit(p.name, 6)} ${MODE_SHORT[p.mode]}`,
-            run: () => this.go({ id: 'FIELDS', p: i, idx: 0 }),
-          })),
-      };
+    selectNetField() {
+      let sel = this.cur;
+      return this.f.num('SELECT NET TO MODIFY', '##', () => sel, (v) => {
+        sel = v;
+        this.after(0, () => this.programNet(v));
+      }, (v) => (v >= 0 && v < NUM_NETS ? null : 'NET 00-99'), { suffix: (v) => `[${this.nets[v] ? this.nets[v].name : ''}]` });
     }
 
-    menuSlots() {
-      return {
-        id: 'MENU',
-        title: 'CLAVES COMSEC',
-        idx: 0,
-        items: () =>
-          this.slots.map((s, i) => ({
-            label: s ? `${pad(i + 1)} ${s.type} ${s.tag}` : `${pad(i + 1)} -- VACIO --`,
-            run: () => (s ? this.go(this.menuSlot(i)) : this.flash('SLOT VACIO')),
-          })),
-      };
+    programNet(i) {
+      const n = this.nets[i];
+      this.go(this.wizard(`NET ${pad(i)}`, [
+        this.f.choice('ACTIVATE IN LIST?', () => (n.active ? 'YES' : 'NO'), (v) => { n.active = v === 'YES'; }, () => ['YES', 'NO']),
+        this.f.choice('NET TYPE', () => ({ LOS: 'LOS FIX FREQUENCY', SAT: 'SATCOM', HOP: 'FREQUENCY HOPPING' }[n.type]), (v) => {
+          const t = { 'LOS FIX FREQUENCY': 'LOS', SATCOM: 'SAT', 'FREQUENCY HOPPING': 'HOP' }[v];
+          if (t !== n.type) this.changeNetType(n, t);
+        }, () => NET_TYPES),
+        Object.assign(this.f.choice('HOPPING TYPE', () => n.hop, (v) => {
+          n.hop = v;
+          if (v === 'HAVEQUICK' && n.crypto === 'KYV-5') n.crypto = 'NONE';
+          n.power = Math.min(n.power, 10);
+        }, () => ['SINCGARS', 'HAVEQUICK']), { skip: () => n.type !== 'HOP' }),
+      ], () => this.go(this.menuNet(i))));
     }
 
-    menuSlot(i) {
-      return {
-        id: 'MENU',
-        title: `SLOT ${pad(i + 1)}`,
-        idx: 0,
-        items: () => [
-          { label: 'VER DETALLE', run: () => this.go({ id: 'SLOTINFO', i }) },
-          {
-            label: 'BORRAR SLOT',
-            run: () =>
-              this.go({
-                id: 'CONFIRM',
-                lines: [`BORRAR SLOT ${pad(i + 1)}?`, this.slots[i] ? this.slots[i].tag : '', 'ENT=SI   CLR=NO'],
-                yes: () => {
-                  this.slots[i] = null;
-                  this.emit('zeroize', { slot: i + 1 });
-                  this.back(); // confirmación
-                  this.back(); // menú del slot
-                  this.flash(`SLOT ${pad(i + 1)} BORRADO`);
-                },
-              }),
+    changeNetType(n, t) {
+      n.type = t;
+      n.crypto = 'NONE';
+      if (t === 'SAT') {
+        n.code = 999;
+        n.rx = 250;
+        n.tx = 300;
+        n.dsq = 'OFF';
+        n.power = Math.max(2, Math.min(20, n.power));
+      } else if (t === 'LOS') {
+        n.rx = 30;
+        n.tx = 30;
+        n.mod = 'FM';
+        n.sq = 'TONE';
+      }
+      const opts = powerOptions(n);
+      if (!opts.includes(n.power)) n.power = opts[opts.length - 1];
+    }
+
+    menuNet(i) {
+      const n = this.nets[i];
+      const items = () => {
+        if (n.type === 'HOP' && n.hop === 'SINCGARS') {
+          return [
+            { label: 'HOPSET', run: () => this.go(this.wizard('HOPSET', this.hopsetFields(n))) },
+            { label: 'COMSEC', run: () => this.go(this.wizard('COMSEC', this.comsecFields(n))) },
+            { label: 'DAT/VOC' },
+            { label: 'PWR', run: () => this.go(this.wizard('PWR', this.pwrFields(n))) },
+            { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(n, this.nets)])) },
+          ];
+        }
+        if (n.type === 'HOP') {
+          return [
+            { label: 'NET', run: () => this.go(this.wizard('NET', this.hqFields(n))) },
+            { label: 'COMSEC', run: () => this.go(this.wizard('COMSEC', this.comsecFields(n))) },
+            { label: 'PWR', run: () => this.go(this.wizard('PWR', this.pwrFields(n))) },
+            { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(n, this.nets)])) },
+          ];
+        }
+        return [
+          { label: 'FREQ', run: () => this.go(this.wizard('FREQ', n.type === 'SAT' ? this.satFreqFields(n) : this.losFreqFields(n))) },
+          { label: 'COMSEC', run: () => this.go(this.wizard('COMSEC', this.comsecFields(n))) },
+          { label: 'DATA/VOC', run: () => this.go(this.wizard('DATA/VOC', this.dataVocFields(n))) },
+          { label: 'SQ', run: () => this.go(this.wizard('SQ', this.sqFields(n))) },
+          { label: 'PWR', run: () => this.go(this.wizard('PWR', this.pwrFields(n))) },
+          { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(n, this.nets)])) },
+        ];
+      };
+      return this.menu(`NET ${pad(i)} ${n.name}`, items);
+    }
+
+    freqField(label, get, set, lo, hi) {
+      return this.f.num(label, '###.#####', get, set, (v) => (v >= lo && v <= hi ? null : 'FREC FUERA DE RANGO'), { unit: 'MHZ' });
+    }
+
+    losFreqFields(n) {
+      return [
+        this.freqField('RECEIVE FREQUENCY', () => n.rx, (v) => {
+          n.rx = r5(v);
+          if (n.rx < 90) n.mod = 'FM';
+          if (n.crypto === 'KYV-5' && n.rx > 87.975) n.crypto = 'NONE';
+          if (n.crypto === 'FASCINATOR' && n.rx < 90) n.crypto = 'NONE';
+        }, 30, 511.99999),
+        this.freqField('TRANSMIT FREQUENCY', () => n.tx, (v) => {
+          n.tx = r5(v);
+          const opts = powerOptions(n);
+          if (!opts.includes(n.power)) n.power = opts[opts.length - 1];
+        }, 30, 511.99999),
+        this.f.choice('RECEIVE ONLY?', () => (n.rxOnly ? 'YES' : 'NO'), (v) => { n.rxOnly = v === 'YES'; }, () => ['NO', 'YES']),
+      ];
+    }
+
+    satFreqFields(n) {
+      return [
+        this.f.num('FREQ CODE', '###', () => n.code, (v) => {
+          n.code = v;
+          const sc = satCode(v);
+          if (!sc.manual) {
+            n.rx = sc.rx;
+            n.tx = sc.tx;
+          }
+          if (!cryptoOptions(n).includes(n.crypto)) n.crypto = 'NONE';
+        }, (v) => (satCode(v) ? null : 'CODIGO NO VALIDO'), {
+          suffix: (v) => {
+            const sc = satCode(v);
+            return !sc ? '' : sc.manual ? 'MANUAL' : `${sc.bw}KHZ`;
           },
-        ],
-      };
+        }),
+        Object.assign(this.freqField('RECEIVE FREQUENCY', () => n.rx, (v) => { n.rx = r5(v); }, 225, 511.99999), { skip: () => n.code !== 999 }),
+        Object.assign(this.freqField('TRANSMIT FREQUENCY', () => n.tx, (v) => { n.tx = r5(v); }, 225, 511.99999), { skip: () => n.code !== 999 }),
+        this.f.choice('RECEIVE ONLY?', () => (n.rxOnly ? 'YES' : 'NO'), (v) => { n.rxOnly = v === 'YES'; }, () => ['NO', 'YES']),
+      ];
+    }
+
+    comsecFields(n) {
+      const isA = () => n.crypto === 'ANDVT';
+      const none = () => n.crypto === 'NONE';
+      return [
+        this.f.choice('CRYPTO MODE', () => n.crypto, (v) => {
+          n.crypto = v;
+          if (v === 'VINSON' || v === 'KYV-5' || v === 'FASCINATOR') n.mod = 'FM';
+          if (n.type === 'SAT') n.opt = v === 'VINSON' ? '132' : v === 'ANDVT' ? '010' : n.opt;
+        }, () => cryptoOptions(n)),
+        Object.assign(this.f.num('ENCRYPTION KEY', '##', () => n.key, (v) => { n.key = v; }, (v) => (v >= 1 && v <= 25 ? null : 'TEK 01-25'), {
+          prefix: 'TEK ',
+          suffix: (v) => {
+            const k = this.keys[BANK_OF[n.crypto]] && this.keys[BANK_OF[n.crypto]].TEK[v - 1];
+            return k ? 'CARGADA' : 'VACIA';
+          },
+        }), { skip: none }),
+        Object.assign(this.f.choice('ANALOG DATA', () => (n.analog ? 'YES' : 'NO'), (v) => { n.analog = v === 'YES'; }, () => ['NO', 'YES']), { skip: () => !['VINSON', 'KYV-5', 'FASCINATOR'].includes(n.crypto) }),
+        Object.assign(this.f.choice('TRAINING FRAMES', () => String(n.frames), (v) => { n.frames = Number(v); }, () => ['6', '9', '12', '15', '20', '30', '60']), { skip: () => !isA() }),
+        Object.assign(this.f.choice('ANDVT PREAMBLE', () => n.preamble, (v) => { n.preamble = v; }, () => ['STANDARD', 'ENHANCED']), { skip: () => !isA() }),
+        Object.assign(this.f.choice('VOICE AUTOSWITCH', () => n.autosw, (v) => { n.autosw = v; }, () => ['ENABLE', 'DISABLE']), { skip: () => !isA() }),
+      ];
+    }
+
+    dataVocFields(n) {
+      if (n.type === 'SAT') {
+        return [
+          Object.assign(this.f.choice('VOICE MODE', () => n.voice, (v) => { n.voice = v; }, () => ['MELP', 'LPC']), { skip: () => n.crypto !== 'ANDVT' }),
+          Object.assign(this.f.choice('OPTION CODE', () => n.opt, (v) => { n.opt = v; }, () => ['010', 'A10', 'B10', 'C10']), { skip: () => n.crypto !== 'ANDVT' }),
+          Object.assign(this.f.info('OPTION CODE', ['132 (FIJO VINSON)']), { skip: () => n.crypto !== 'VINSON' }),
+          this.f.choice('DATA/VOICE', () => 'AUTO ON ADF PORT', () => null, () => ['AUTO ON ADF PORT', 'AUTO ON DATA PORT']),
+        ];
+      }
+      return [
+        this.f.choice('DATA/VOICE', () => 'AUTO ON ADF PORT', () => null, () => ['AUTO ON ADF PORT', 'AUTO ON DATA PORT']),
+        this.f.choice('MODULATION', () => n.mod, (v) => {
+          n.mod = v;
+          if (v === 'AM') n.sq = 'NOISE';
+          const opts = powerOptions(n);
+          if (!opts.includes(n.power)) n.power = opts[opts.length - 1];
+        }, () => (n.rx < 90 || ['VINSON', 'KYV-5', 'FASCINATOR'].includes(n.crypto) ? ['FM'] : ['FM', 'AM'])),
+        Object.assign(this.f.choice('FM DEVIATION', () => n.dev, (v) => { n.dev = v; }, () => ['8.0 KHZ', '6.5 KHZ', '5.0 KHZ']), { skip: () => n.mod !== 'FM' }),
+      ];
+    }
+
+    sqFields(n) {
+      if (!n) return [this.f.info('SQUELCH', ['DAMA: SQUELCH DIGITAL'])];
+      if (n.type === 'SAT') {
+        return [this.f.choice('DIGITAL SQUELCH (CT)', () => n.dsq, (v) => { n.dsq = v; }, () => ['OFF', 'ON'])];
+      }
+      return [this.f.choice('ANALOG SQUELCH', () => n.sq, (v) => { n.sq = v; }, () => (n.mod === 'AM' ? ['NOISE', 'OFF'] : ['TONE', 'NOISE', 'OFF']))];
+    }
+
+    pwrFields(n) {
+      return [this.f.choice('TX POWER LEVEL', () => n.power, (v) => { n.power = v; }, () => powerOptions(n), (v) => `${v} WATTS`)];
+    }
+
+    nameField(obj, list) {
+      return this.f.text('CHANGE NAME', () => obj.name, (v) => {
+        if (list.some((o) => o !== obj && o.name === v)) return 'NOMBRE REPETIDO';
+        obj.name = v;
+        return null;
+      });
+    }
+
+    hopsetFields(n) {
+      return [
+        this.f.num('HOPSET COMPARTMENT', '##', () => n.hopset, (v) => { n.hopset = v; }, (v) => (v >= 1 && v <= 25 ? null : 'COMPARTIMENTO 01-25'), {
+          suffix: (v) => {
+            const t = this.keys.SINCGARS.TSK[v - 1];
+            return t ? `[F${pad(t.netId, 3)}]` : '[EMPTY]';
+          },
+        }),
+        this.f.choice('LATE NET ENTRY', () => n.lne, (v) => { n.lne = v; }, () => ['OFF', 'ON']),
+        this.f.choice('RECEIVE ONLY', () => (n.rxOnly ? 'YES' : 'NO'), (v) => { n.rxOnly = v === 'YES'; }, () => ['NO', 'YES']),
+      ];
+    }
+
+    hqFields(n) {
+      return [
+        this.f.num('NET NUMBER', '##.###', () => n.hqNet, (v) => { n.hqNet = v; }, (v) => {
+          const x = Number(v);
+          return Number.isFinite(x) && Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && Math.round(x * 1000) % 25 === 0 ? null : 'NET NUMBER: PASOS .025';
+        }, { fmt: (v) => String(v), parse: (raw) => raw }),
+      ];
     }
 
     menuOPT() {
-      return {
-        id: 'MENU',
-        title: 'OPCIONES',
-        idx: 0,
-        items: () => [
-          { label: `SQUELCH: ${this.squelch ? 'ON' : 'OFF'}`, run: () => (this.squelch = !this.squelch) },
-          { label: `LUZ FONDO: ${this.light ? 'ON' : 'OFF'}`, run: () => (this.light = !this.light) },
-          { label: `TONO TECLAS: ${this.keyTone ? 'ON' : 'OFF'}`, run: () => (this.keyTone = !this.keyTone) },
-          {
-            label: `POTENCIA: ${this.preset.power}`,
-            run: () => {
-              const ids = POWER.map((p) => p.id);
-              this.preset.power = ids[(ids.indexOf(this.preset.power) + 1) % ids.length];
-            },
-          },
-        ],
-      };
+      const n = this.net;
+      return this.menu('OPT', [
+        { label: 'COMSEC', run: () => (this.mode === 'DAMA' ? this.flash('USE PGM DAMA') : this.go(this.wizard('COMSEC', this.comsecFields(n)))) },
+        { label: 'RETRANS' },
+        { label: 'TIME', run: () => this.go(this.menu('TIME', [
+          { label: 'SINCGARS', run: () => this.go(this.todWizard('SINCGARS')) },
+          { label: 'HAVE_QUICK', run: () => this.go(this.todWizard('HAVE_QUICK')) },
+          { label: 'HPW' },
+        ])) },
+        { label: 'GPS' },
+        { label: 'SAVE' },
+        { label: 'POWER', run: () => (this.mode === 'DAMA' ? this.flash('USE PGM DAMA') : this.go(this.wizard('POWER', this.pwrFields(n)))) },
+      ]);
     }
 
-    key_MENU(k) {
-      const s = this.screen;
-      const items = s.items();
-      if (k === 'UP') s.idx = (s.idx + items.length - 1) % items.length;
-      else if (k === 'DOWN') s.idx = (s.idx + 1) % items.length;
-      else if (k === 'ENT') items[s.idx].run();
-      else if (k === 'CLR') this.back();
+    todWizard(kind) {
+      return this.wizard(kind, [
+        this.f.choice('SOURCE', () => 'USER ENTRY', (v) => {
+          if (v === 'GPS_SYNC') return 'SIN GPS EN J2';
+          return null;
+        }, () => ['USER ENTRY', 'GPS_SYNC']),
+        this.f.info('TIME OF DAY (UTC)', [SIM.utcStamp(this.env.now()), 'ENT = ACEPTAR']),
+      ], () => {
+        if (kind === 'SINCGARS') this.todSinc = this.env.now();
+        else this.todHQ = this.env.now();
+        this.emit('tod', { kind });
+        this.flash(`TOD ${kind === 'SINCGARS' ? 'SINC' : 'HQ'} ESTABLECIDO`);
+      });
     }
 
-    key_CONFIRM(k) {
-      if (k === 'ENT') this.screen.yes();
-      else if (k === 'CLR') this.back();
+    menuTEST() {
+      return this.menu('TEST', [
+        { label: 'TEST', run: () => this.startBit() },
+        { label: 'BATTERY', run: () => this.go({ id: 'INFO', lines: ['BATTERY', `VOLT: ${(24 + this.battery * 0.08).toFixed(1)}V NOMINAL`, 'LI-ION (BB-2590)', 'HUB: 3.6V OK'] }) },
+        { label: 'VERSIONS', run: () => this.go({ id: 'INFO', lines: ['VERSIONS', 'FIRMWARE SIM 1.0', 'OVM ENTRENAMIENTO', 'SERIAL SIM-0117'] }) },
+        { label: 'ETI', run: () => this.go({ id: 'INFO', lines: ['ETI', `POWER ON ${pad(Math.floor(this.etiMin / 60), 4)}:${pad(this.etiMin % 60)}`, '', ''] }) },
+      ]);
     }
 
-    key_FIELDS(k) {
-      const s = this.screen;
-      const p = this.presets[s.p];
-      const f = fieldsFor(p);
-      s.idx = Math.min(s.idx, f.length - 1);
-      if (k === 'UP') s.idx = (s.idx + f.length - 1) % f.length;
-      else if (k === 'DOWN') s.idx = (s.idx + 1) % f.length;
-      else if (k === 'CLR') this.back();
-      else if (k === 'ENT') this.go({ id: 'EDIT', p: s.p, field: f[s.idx], val: p[f[s.idx]], buf: '' });
-    }
-
-    key_EDIT(k) {
-      const s = this.screen;
-      const p = this.presets[s.p];
-      const def = FIELDS[s.field];
-      if (def.type === 'enum') {
-        const opts = def.options();
-        const i = opts.indexOf(s.val);
-        if (k === 'UP' || k === 'RIGHT') s.val = opts[(i + 1) % opts.length];
-        else if (k === 'DOWN' || k === 'LEFT') s.val = opts[(i + opts.length - 1) % opts.length];
-        else if (k === 'CLR') this.back();
-        else if (k === 'ENT') this.commitEdit(p, s.field, s.val);
-        return;
-      }
-      if (/^[0-9]$/.test(k) || (k === '.' && DECIMAL_FIELDS.includes(s.field) && !s.buf.includes('.'))) {
-        if (s.buf.length < 9) s.buf += k;
-      } else if (k === 'CLR') {
-        if (s.buf) s.buf = s.buf.slice(0, -1);
-        else this.back();
-      } else if (k === 'ENT') {
-        if (!s.buf) return this.back();
-        const v = Number(s.buf);
-        const err = validateNum(s.field, v, p);
-        if (err) {
-          s.buf = '';
-          return this.flash(err, 2500);
-        }
-        this.commitEdit(p, s.field, v);
-      }
-    }
-
-    commitEdit(p, field, val) {
-      const err = this.applyField(p, field, val);
-      if (err) return this.flash(err, 2500);
-      this.back();
-      if (field === 'crypto' && val === 'CT') {
-        const k = this.slots[p.keySlot - 1];
-        if (!k || k.type !== 'TEK') return this.flash(`AVISO: S${pad(p.keySlot)} SIN TEK`, 2500);
-      }
-      if (p.crypto === 'CT' && (field === 'keySlot' || field === 'cryptoMode' || field === 'crypto')) {
-        const k = this.slots[p.keySlot - 1];
-        if (k && k.type === 'TEK' && (k.alg || 'VINSON') !== p.cryptoMode) return this.flash(`AVISO: CLAVE ${k.alg || 'VINSON'}`, 2500);
-      }
-      this.flash('GUARDADO');
-    }
-
-    /** Aplica un valor a un campo del preset con sus efectos secundarios. Devuelve error o null. */
-    applyField(p, field, val) {
-      if (field === 'mod' && val === 'AM' && (p.freq < BANDS.AM[0] || p.freq > BANDS.AM[1])) return 'FREC NO VALIDA EN AM';
-      p[field] = val;
-      if (field === 'mode') {
-        if (val === 'SINCGARS') p.mod = 'FM';
-        if (val === 'HQ') p.mod = 'AM';
-        if (val === 'LOS' && p.mod === 'AM' && (p.freq < BANDS.AM[0] || p.freq > BANDS.AM[1])) p.mod = 'FM';
-      }
-      return null;
-    }
-
-    key_SLOTINFO(k) {
-      if (k === 'CLR' || k === 'ENT') this.back();
-    }
-    key_INFO(k) {
-      if (k === 'CLR' || k === 'ENT') this.back();
-    }
-    key_DAMA(k) {
-      if ((k === 'CLR' || k === 'ENT') && this.screen.done) this.back();
-    }
-    key_TOD(k) {
-      if ((k === 'CLR' || k === 'ENT') && this.screen.done) this.back();
-    }
-    key_BIT(k) {
-      const s = this.screen;
-      if (!s.done) return;
-      if (k === 'UP') s.scroll = Math.max(0, s.scroll - 1);
-      else if (k === 'DOWN') s.scroll = Math.min(Math.max(0, this.bitResult.items.length - 2), s.scroll + 1);
-      else if (k === 'CLR' || k === 'ENT') this.back();
-    }
-    key_LD(k) {
-      if (k === 'UP') this.ldSlot = (this.ldSlot % NUM_SLOTS) + 1;
-      else if (k === 'DOWN') this.ldSlot = ((this.ldSlot + NUM_SLOTS - 2) % NUM_SLOTS) + 1;
-      this.screen.last = null;
-    }
-
-    // ---------------------------------------------------------------- BIT / TOD
     startBit() {
-      this.go({ id: 'BIT', done: false, scroll: 0 });
+      this.go({ id: 'BIT', done: false });
       const screen = this.screen;
       this.after(3000, () => {
-        const c = this.env.getConn();
-        const items = [];
-        items.push('PROCESADOR ....... OK');
-        items.push('SINTETIZADOR ..... OK');
-        items.push('MODULO CRIPTO .... OK');
-        items.push(c.antenna === 'NONE' ? 'ANTENA/VSWR .... FALLO' : 'ANTENA/VSWR ...... OK');
-        items.push(this.battery > 20 ? 'BATERIA .......... OK' : 'BATERIA ...... BAJA');
-        items.push(`CLAVES CARGADAS .. ${pad(this.slots.filter(Boolean).length)}`);
-        const pass = c.antenna !== 'NONE' && this.battery > 20;
-        this.bitResult = { pass, items, at: this.env.now() };
+        const pass = this.battery > 10;
+        this.bitResult = { pass, at: this.env.now() };
         screen.done = true;
         this.emit('bit', this.bitResult);
         this.changed();
       });
     }
+    key_BIT(k) {
+      if (this.screen.done && (k === 'CLR' || k === 'ENT')) this.back();
+    }
+    key_INFO(k) {
+      if (k === 'CLR' || k === 'ENT') this.back();
+    }
+    key_RV(k) {
+      return k;
+    }
 
-    /** Solicitud de acceso al controlador DAMA con el preset actual. */
+    // ================================================================ DAMA
+    menuDAMA() {
+      return this.menu('DAMA', [
+        { label: 'PRESETS', run: () => this.go(this.menu('PRESETS', [
+          { label: 'NETS', run: () => this.go(this.wizard('NETS', [this.selectIdxField('SELECT NET TO MODIFY', '#', NUM_DAMA, this.damaNets, (i) => this.go(this.menuDamaNet(i)))])) },
+          { label: 'PORT_CONFIGS', run: () => this.go(this.wizard('PORT_CONFIGS', [this.selectIdxField('SELECT PORT CONFIG', '#', NUM_DAMA, this.damaCfgs, (i) => this.go(this.menuDamaCfg(i)))])) },
+          { label: 'DESTINATIONS', run: () => this.go(this.wizard('DESTINATIONS', [this.selectIdxField('SELECT DESTINATION', '##', NUM_DEST, this.damaDests, (i) => this.go(this.menuDamaDest(i)))])) },
+        ])) },
+        { label: 'DEFAULT' },
+      ]);
+    }
+
+    selectIdxField(label, tmpl, max, list, open) {
+      return this.f.num(label, tmpl, () => 0, (v) => {
+        this.after(0, () => {
+          open(v);
+          this.changed();
+        });
+      }, (v) => (v >= 0 && v < max ? null : 'FUERA DE RANGO'), { suffix: (v) => (list[v] ? `[${list[v].name}]` : '') });
+    }
+
+    menuDamaNet(i) {
+      const d = this.damaNets[i];
+      return this.menu(`${i}-${d.name}`, [
+        { label: 'CHANNEL', run: () => this.go(this.wizard('CHANNEL', [
+          this.f.num('CHANNEL NUMBER', '###', () => d.channel, (v) => { d.channel = v; }, (v) => (v >= 1 && v <= 249 ? null : 'CANAL 1-249'), {
+            suffix: (v) => {
+              const sc = satCode(v);
+              return sc && !sc.manual ? `${sc.bw}KHZ` : '';
+            },
+          }),
+          this.f.choice('TRANSMIT CAPABILITY', () => d.txCap, (v) => { d.txCap = v; }, () => ['FULL', 'EMCON']),
+          this.f.choice('CONSTANT KEY PORT?', () => d.ckp, (v) => { d.ckp = v; }, () => ['NO', 'YES']),
+          this.f.num('DEFAULT CONFIG', '#', () => d.cfg, (v) => { d.cfg = v; }, (v) => (v >= 0 && v <= 9 ? null : 'CONFIG 0-9'), { suffix: (v) => `[${this.damaCfgs[v].name}]` }),
+        ])) },
+        { label: 'RANGING', run: () => this.go(this.wizard('RANGING', [this.f.choice('RANGING METHOD', () => d.ranging, (v) => { d.ranging = v; }, () => ['ACTIVE', 'FIXED'])])) },
+        { label: 'ADDR', run: () => this.go(this.menu('ADDR', [
+          { label: 'BASE_ADDRESS', run: () => this.go(this.wizard('BASE_ADDRESS', [this.f.num('BASE ADDRESS', '#####', () => d.tba, (v) => { d.tba = v; }, (v) => (v >= 1 && v <= 49999 ? null : 'TBA 00001-49999'))])) },
+          { label: 'GUARD_LIST', run: () => this.go(this.menu('GUARD LIST', [
+            { label: 'ADD', run: () => this.go(this.wizard('GUARD LIST', [this.f.num('ADDRESS TO ADD', '#####', () => 50000, (v) => {
+              if (d.guard.includes(v)) return 'YA EN LA LISTA';
+              if (d.guard.length >= 15) return 'LISTA LLENA (15)';
+              d.guard.push(v);
+              return null;
+            }, (v) => (v >= 50000 && v <= 65535 ? null : 'RED 50000-65535'))])) },
+            { label: 'REVIEW', run: () => this.go({ id: 'INFO', lines: ['GUARD LIST', ...(d.guard.length ? d.guard.slice(0, 3).map((a) => pad(a, 5)) : ['(VACIA)'])] }) },
+            { label: 'DELETE', run: () => {
+              if (!d.guard.length) return this.flash('LISTA VACIA');
+              const a = d.guard.pop();
+              this.flash(`BORRADA ${pad(a, 5)}`);
+            } },
+          ])) },
+        ])) },
+        { label: 'TRANSEC', run: () => this.go(this.wizard('TRANSEC', [
+          this.f.choice('ORDERWIRE ENCRYPTION', () => d.ow, (v) => { d.ow = v; }, () => ['ON', 'OFF']),
+          Object.assign(this.f.num('KEY LOCATION 0-3', '##', () => d.tskLoc, (v) => { d.tskLoc = v; }, (v) => (v >= 1 && v <= 25 ? null : 'TSK 01-25'), {
+            prefix: 'TSK ',
+            suffix: (v) => (this.keys.SATELLITE.TSK[v - 1] ? 'CARGADA' : 'VACIA'),
+          }), { skip: () => d.ow !== 'ON' }),
+          Object.assign(this.f.choice('KEY LOCATION 4-7', () => 'NONE', () => null, () => ['NONE']), { skip: () => d.ow !== 'ON' }),
+        ])) },
+        { label: 'POWER', run: () => this.go(this.wizard('POWER', [this.f.choice('TX POWER LEVEL', () => d.power, (v) => { d.power = v; }, () => POWERS, (v) => `${v} WATTS`)])) },
+        { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(d, this.damaNets)])) },
+      ]);
+    }
+
+    menuDamaCfg(i) {
+      const c = this.damaCfgs[i];
+      return this.menu(`${i}-${c.name}`, [
+        { label: 'COMSEC', run: () => this.go(this.wizard('COMSEC', [
+          this.f.choice('CRYPTO MODE', () => c.crypto, (v) => { c.crypto = v; }, () => ['NONE', 'VINSON', 'ANDVT', 'KG-84']),
+          Object.assign(this.f.num('ENCRYPTION KEY', '##', () => c.key, (v) => { c.key = v; }, (v) => (v >= 1 && v <= 25 ? null : 'TEK 01-25'), {
+            prefix: 'TEK ',
+            suffix: (v) => (this.keys[BANK_OF[c.crypto]] && this.keys[BANK_OF[c.crypto]].TEK[v - 1] ? 'CARGADA' : 'VACIA'),
+          }), { skip: () => c.crypto === 'NONE' }),
+          Object.assign(this.f.choice('TRAINING FRAMES', () => String(c.frames), (v) => { c.frames = Number(v); }, () => ['6', '9', '12', '15', '20', '30', '60']), { skip: () => c.crypto !== 'ANDVT' }),
+        ])) },
+        { label: 'DATA/VOICE', run: () => this.go(this.wizard('DATA/VOICE', [this.f.choice('VOICE MODE', () => c.voice, (v) => { c.voice = v; }, () => ['MELP', 'LPC'])])) },
+        { label: 'CONFIG_CODE', run: () => this.go(this.wizard('CONFIG_CODE', [
+          this.f.num('25KHZ PORT CFG CODE', '###', () => c.code25, (v) => { c.code25 = v; }, null, { fmt: (v) => String(v).padStart(3, '0'), parse: (r) => r }),
+          this.f.num('5KHZ PORT CFG CODE', '###', () => c.code5, (v) => { c.code5 = v; }, null, { fmt: (v) => String(v).padStart(3, '0'), parse: (r) => r }),
+        ])) },
+        { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(c, this.damaCfgs)])) },
+      ]);
+    }
+
+    menuDamaDest(i) {
+      const d = this.damaDests[i];
+      return this.menu(`${pad(i)}-${d.name}`, [
+        { label: '5KHZ', run: () => this.go(this.wizard('5KHZ', [this.f.num('DESTINATION', '#####', () => d.nb5, (v) => { d.nb5 = v; }, (v) => (v >= 0 && v <= 65535 ? null : '00000-65535'))])) },
+        { label: '25K_AC', run: () => this.go(this.menu('25K_AC', [
+          { label: 'ADD', run: () => this.go(this.wizard('25K_AC', [this.f.num('DESTINATION TO ADD', '#####', () => 0, (v) => {
+            if (d.ac25.length >= 5) return 'MAX 5 DESTINOS';
+            if (!d.ac25.includes(v)) d.ac25.push(v);
+            return null;
+          }, (v) => (v >= 1 && v <= 65535 ? null : '00001-65535'))])) },
+          { label: 'REVIEW', run: () => this.go({ id: 'INFO', lines: ['25K_AC', ...(d.ac25.length ? d.ac25.slice(0, 3).map((a) => pad(a, 5)) : ['(VACIA)'])] }) },
+          { label: 'DELETE', run: () => (d.ac25.length ? this.flash(`BORRADA ${pad(d.ac25.pop(), 5)}`) : this.flash('LISTA VACIA')) },
+        ])) },
+        { label: '25K_DC' },
+        { label: 'SEARCH' },
+        { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(d, this.damaDests)])) },
+        { label: 'CLEAR', run: () => this.go(this.wizard('CLEAR', [this.f.choice('ARE YOU SURE?', () => 'NO', (v) => {
+          if (v === 'YES') Object.assign(d, defDest(i));
+        }, () => ['NO', 'YES'])])) },
+      ]);
+    }
+
+    /** Entra en modo DAMA con la red DAMA actual y arranca la secuencia de conexión. */
     startDama() {
-      const p = this.preset;
-      if (p.mode !== 'SATCOM' || p.satType !== 'DAMA') return this.flash('PRESET NO ES DAMA', 2500);
-      if (!p.damaAddr) return this.flash('FALTA DIR TERMINAL', 2500);
-      this.go({ id: 'DAMA', done: false, ok: false, why: '' });
-      const screen = this.screen;
-      const want = { sat: p.damaSat, net: p.damaNet, addr: p.damaAddr };
-      this.after(3000, () => {
-        const c = this.env.getConn();
-        screen.done = true;
-        if (c.antenna !== 'SATCOM') screen.why = 'SIN ANTENA SATCOM';
-        else if (Radio.powerOf(p.power).w < 10) screen.why = 'POTENCIA INSUF.';
-        if (!screen.why) {
-          screen.ok = true;
-          this.dama = want;
+      if (!this.operating) return;
+      const d = this.damaNets[this.damaCur];
+      const token = {};
+      this.dama = { token, status: 'CONFIG', service: 'IDLE', err: null, call: null };
+      this.home();
+      const step = (ms, fn) => this.after(ms, () => {
+        if (!this.dama || this.dama.token !== token || this.mode !== 'DAMA') return;
+        fn();
+        this.changed();
+      });
+      step(1200, () => {
+        if (d.ow === 'ON' && !this.keys.SATELLITE.TSK[d.tskLoc - 1]) {
+          this.dama.status = 'ERROR';
+          this.dama.err = 'NO ORDERWIRE KEYS';
+          this.go({ id: 'NOTICE', lines: ['CONFIGURING DAMA', 'NO ORDERWIRE KEYS', 'LOADED', 'PRESS ANY KEY'] });
+          return;
         }
-        this.emit('dama', { ok: screen.ok, why: screen.why, ...want });
-        this.changed();
+        this.dama.status = 'ACQUIRING';
+        const tryAcq = () => {
+          const net = this.env.net;
+          const r = net ? net.damaAcquire(this.damaSnapshot()) : { ok: false };
+          if (!r.ok) {
+            this.dama.why = r.reason;
+            step(2000, tryAcq);
+            return;
+          }
+          this.dama.why = null;
+          if (d.ranging === 'ACTIVE') this.dama.status = 'RANGING';
+          step(d.ranging === 'ACTIVE' ? 2500 : 200, () => {
+            this.dama.status = 'LOGGING IN';
+            step(1500, () => {
+              const lg = net.damaLogin(this.damaSnapshot());
+              if (!lg.ok) {
+                this.dama.status = 'ERROR';
+                this.dama.err = lg.code;
+                this.emit('dama', { ok: false, code: lg.code, reason: lg.reason });
+                return;
+              }
+              this.dama.status = 'CONNECTED';
+              this.dama.service = 'IDLE';
+              this.emit('dama', { ok: true, status: 'CONNECTED' });
+            });
+          });
+        };
+        tryAcq();
       });
     }
 
-    damaOk(p) {
-      const d = this.dama;
-      return !!d && d.sat === p.damaSat && d.net === p.damaNet && d.addr === p.damaAddr;
+    damaSnapshot() {
+      const d = this.damaNets[this.damaCur];
+      const c = this.damaCfgs[d.cfg];
+      const tek = c.crypto !== 'NONE' && BANK_OF[c.crypto] ? this.keys[BANK_OF[c.crypto]].TEK[c.key - 1] : null;
+      const tsk = this.keys.SATELLITE.TSK[d.tskLoc - 1];
+      return {
+        net: Object.assign({}, d, { guard: d.guard.slice() }),
+        cfg: Object.assign({}, c),
+        keyTag: tek ? tek.tag : null,
+        tskTag: d.ow === 'ON' && tsk ? tsk.tag : null,
+        conn: Object.assign({}, this.env.getConn()),
+        secure: this.secure,
+        powerW: d.power,
+        call: this.dama ? this.dama.call : null,
+      };
     }
 
-    startTod() {
-      this.go({ id: 'TOD', done: false });
-      const screen = this.screen;
+    callKey() {
+      if (this.mode === 'DAMA') {
+        if (!this.dama || this.dama.status !== 'CONNECTED') return this.flash('DAMA NO CONECTADO');
+        const call = { type: 'PLACE A CALL', dest: 0, prec: 'ROUTINE', dur: 0 };
+        const disc = () => call.type !== 'PLACE A CALL';
+        return this.go(this.wizard('CALL', [
+          this.f.choice('SELECT REQUEST TYPE', () => call.type, (v) => { call.type = v; }, () => ['PLACE A CALL', 'DISCONNECT CALL']),
+          Object.assign(this.f.num('SELECT A DESTINATION', '##', () => 0, (v) => { call.dest = v; }, (v) => (v >= 0 && v < NUM_DEST ? null : 'DESTINO 00-49'), {
+            suffix: (v) => (this.damaDests[v] ? `[${this.damaDests[v].name}]` : ''),
+          }), { skip: disc }),
+          Object.assign(this.f.choice('PRECEDENCE', () => call.prec, (v) => { call.prec = v; }, () => PRECEDENCE), { skip: disc }),
+          Object.assign(this.f.num('DURATION', '####', () => 0, (v) => { call.dur = v; }, null), { skip: disc }),
+        ], () => {
+          if (call.type === 'PLACE A CALL') return this.placeDamaCall(call);
+          this.dama.call = null;
+          this.dama.service = 'IDLE';
+          this.emit('dama', { ok: true, status: 'IDLE' });
+          this.flash('LLAMADA TERMINADA');
+        }));
+      }
+      const n = this.net;
+      if (n.type === 'SAT') {
+        return this.go({ id: 'RSSI', stage: 0 });
+      }
+      if (n.type === 'HOP' && n.hop === 'HAVEQUICK') {
+        return this.go(this.wizard('CALL', [this.f.choice('TOD SYNC', () => 'RECEIVE', (v) => {
+          if (v === 'TRANSMIT') return 'TOD NO DISPONIBLE';
+          this.after(0, () => this.todReceive());
+          return null;
+        }, () => ['RECEIVE', 'TRANSMIT'])]));
+      }
+      return this.flash('CALL: SIN FUNCION EN LOS');
+    }
+
+    placeDamaCall(call) {
+      this.home();
+      const dest = this.damaDests[call.dest];
+      this.dama.service = 'PENDING';
+      this.changed();
       this.after(2000, () => {
-        this.todValid = true;
-        screen.done = true;
-        this.emit('tod');
+        if (!this.dama) return;
+        const r = this.env.net ? this.env.net.damaCall(this.damaSnapshot(), { dest, prec: call.prec }) : { ok: false, code: 82 };
+        if (!r.ok) {
+          this.dama.service = 'IDLE';
+          this.flash(`ERROR ${r.code}`, 4000);
+          this.emit('dama', { ok: false, code: r.code, reason: r.reason });
+        } else {
+          this.dama.service = 'ACTIVE';
+          this.dama.call = { dest: dest.ac25.slice(), prec: call.prec, name: dest.name };
+          this.emit('dama', { ok: true, status: 'ACTIVE', dest: dest.ac25.slice() });
+        }
         this.changed();
       });
     }
 
-    // ---------------------------------------------------------------- claves
-    zeroizeAll(source) {
-      // Los presets conservan su configuración (CT, slot), pero quedan sin clave.
-      this.slots = new Array(NUM_SLOTS).fill(null);
+    key_RSSI(k) {
+      const s = this.screen;
+      if (k === 'CLR') return this.back();
+      if (k !== 'ENT') return;
+      if (s.stage === 0) {
+        const n = this.net;
+        if (n.crypto !== 'ANDVT' && n.crypto !== 'KG-84') return this.flash('RSSI REQUIERE ANDVT/KG-84', 3000);
+        s.stage = 1;
+        this.after(2500, () => {
+          const score = this.env.net ? this.env.net.rssi(this.linkSnapshot()) : 0;
+          s.stage = 2;
+          s.score = score;
+          this.lastRssi = { score, code: this.net.code, at: this.env.now() };
+          this.emit('rssi', this.lastRssi);
+          this.changed();
+        });
+      } else if (s.stage === 2) {
+        s.stage = 0;
+      }
+    }
+
+    todReceive() {
+      this.go({ id: 'TODRX', done: false });
+      const screen = this.screen;
+      this.after(3500, () => {
+        const ok = this.env.net ? this.env.net.todAvailable(this.linkSnapshot()) : false;
+        screen.done = true;
+        screen.ok = ok;
+        if (ok) {
+          this.todHQ = this.env.now();
+          this.emit('tod', { kind: 'HAVE_QUICK', via: 'CALL' });
+        }
+        this.changed();
+      });
+    }
+    key_TODRX(k) {
+      if (this.screen.done && (k === 'CLR' || k === 'ENT')) this.back();
+    }
+
+    // ================================================================ LD: carga de claves
+    fillMenu() {
+      const req = { device: 'KYK-13', crypto: 'VINSON', keyType: 'TEK', num: 1 };
+      this.fillReq = req;
+      const numMax = () => (req.keyType === 'WOD' ? 31 : 25);
+      const noNum = () => req.device === 'CYZ10-RDS' || req.keyType === 'KEK' || req.keyType === 'TRKEK';
+      return this.wizard('FILL MENU', [
+        this.f.choice('FILL DEVICE', () => req.device, (v) => {
+          if (v === 'KOI-18' || v === 'MX-18290') return 'DISPOSITIVO NO SIMULADO';
+          req.device = v;
+          return null;
+        }, () => FILL_DEVICES),
+        Object.assign(this.f.choice('CRYPTO TYPE', () => req.crypto, (v) => {
+          req.crypto = v;
+          if (!KEY_TYPES[v].includes(req.keyType)) req.keyType = KEY_TYPES[v][0];
+        }, () => CRYPTO_TYPES), { skip: () => req.device === 'CYZ10-RDS' }),
+        Object.assign(this.f.choice('SELECT KEY TYPE', () => req.keyType, (v) => { req.keyType = v; }, () => KEY_TYPES[req.crypto]), { skip: () => req.device === 'CYZ10-RDS' }),
+        Object.assign(this.f.num('KEY NUMBER', '##', () => req.num, (v) => { req.num = v; }, (v) => (v >= 1 && v <= numMax() ? null : `KEY 01-${numMax()}`), {
+          suffix: () => (req.keyType === 'WOD' ? '(DIA)' : ''),
+        }), { skip: noNum }),
+      ], () => this.go({ id: 'FILL', stage: 'READY', req: Object.assign({}, req) }));
+    }
+
+    fillLabel(req) {
+      if (req.device === 'CYZ10-RDS') return 'CYZ10-RDS';
+      const dev = req.device === 'KYK-13' ? 'KYK13' : 'DS101';
+      const num = req.keyType === 'KEK' || req.keyType === 'TRKEK' ? '' : ' ' + pad(req.num);
+      return `${dev} ${req.crypto} ${req.keyType}${num}`;
+    }
+
+    key_FILL(k) {
+      const s = this.screen;
+      if (s.stage === 'READY') {
+        if (k === 'ENT') return this.fillStart();
+        if (k === 'CLR') return this.home();
+        return;
+      }
+      if (s.stage === 'DONE' || s.stage === 'BAD') {
+        s.stage = 'MORE';
+        s.more = 'YES';
+        return;
+      }
+      if (s.stage === 'MORE') {
+        const n = Radio.nav(k);
+        if (n === 'UP' || n === 'DOWN') s.more = s.more === 'YES' ? 'NO' : 'YES';
+        else if (k === 'ENT') {
+          if (s.more === 'YES') this.home();
+          else s.stage = 'CHANGE';
+        }
+      }
+    }
+
+    fillStart() {
+      const s = this.screen;
+      s.stage = 'PROGRESS';
+      const req = s.req;
+      if (req.device === 'CYZ10-RDS') {
+        s.waitUntil = this.env.now() + 60000;
+        this.after(60000, () => {
+          if (this.screen === s && s.stage === 'PROGRESS') {
+            s.stage = 'BAD';
+            this.emit('fill', { ok: false, req, reason: 'No se recibió el loadset (tiempo agotado)' });
+            this.changed();
+          }
+        });
+        return;
+      }
+      let tries = 0;
+      const attempt = () => {
+        if (this.screen !== s || s.stage !== 'PROGRESS') return;
+        const r = this.env.fillPull(Object.assign({}, req));
+        if (r.ok) {
+          const okStore = this.storeKey(req, r.key, r.protocol);
+          s.stage = okStore === true ? 'DONE' : 'BAD';
+          this.emit('fill', { ok: okStore === true, req, key: r.key, protocol: r.protocol, reason: okStore === true ? null : okStore });
+          return this.changed();
+        }
+        tries++;
+        if (!r.wait || tries > 16) {
+          s.stage = 'BAD';
+          this.emit('fill', { ok: false, req, reason: r.reason || 'Sin respuesta del dispositivo de llenado' });
+          return this.changed();
+        }
+        this.after(500, attempt);
+      };
+      this.after(1200, attempt);
+    }
+
+    /** Guarda la clave en el banco/tipo/número elegido en la radio. Devuelve true o motivo de error. */
+    storeKey(req, key, protocol) {
+      // DS-101 transporta el tipo de clave: la radio rechaza un tipo distinto del seleccionado
+      if (protocol === 'DS-101' && (key.bank !== req.crypto || key.type !== req.keyType)) {
+        return `DS-101: la clave es ${key.bank} ${key.type} y la radio esperaba ${req.crypto} ${req.keyType}`;
+      }
+      const rec = { tag: key.tag, src: 'SKL', proto: protocol, at: this.env.now() };
+      const bank = this.keys[req.crypto];
+      if (req.keyType === 'KEK' || req.keyType === 'TRKEK') bank[req.keyType] = rec;
+      else bank[req.keyType][req.num - 1] = rec;
+      return true;
+    }
+
+    /** Recepción de un loadset SINCGARS por ICOM (SKL, pestaña Plats). */
+    receiveLoadset(ls, includeTime) {
+      const s = this.screen;
+      if (!this.booted || this.sw !== 'LD') return { ok: false, reason: 'La radio no está en LD' };
+      if (s.id !== 'FILL' || s.req.device !== 'CYZ10-RDS' || s.stage !== 'PROGRESS') {
+        return { ok: false, reason: 'La radio no está esperando un loadset (FILL DEVICE: CYZ10-RDS, ENT, «FILL IN PROGRESS»)' };
+      }
+      s.stage = 'STORE';
+      this.after(3000, () => {
+        // TEK #1-#5 -> VINSON TEK 21-25, KEK #6 -> VINSON KEK, hopsets -> SINCGARS TSK 20-25
+        ls.teks.forEach((t, i) => { this.keys.VINSON.TEK[20 + i] = { tag: t, src: 'SKL', proto: 'DS-102', at: this.env.now() }; });
+        if (ls.kek) this.keys.VINSON.KEK = { tag: ls.kek, src: 'SKL', proto: 'DS-102', at: this.env.now() };
+        ls.hopsets.forEach((h, i) => { this.keys.SINCGARS.TSK[19 + i] = { tag: h.tag, netId: h.netId, src: 'SKL', proto: 'DS-102', at: this.env.now() }; });
+        if (includeTime) this.todSinc = this.env.now();
+        s.stage = 'DONE';
+        this.emit('fill', { ok: true, loadset: ls.name, req: s.req });
+        this.changed();
+      });
+      this.changed();
+      return { ok: true };
+    }
+
+    /** Borrado de datos rojos (COMSEC y TRANSEC). */
+    zeroizeRed(source) {
+      this.keys = emptyBanks();
+      this.todHQ = null;
+      this.todSinc = null;
+      this.dama = null;
       this.emit('zeroize', { all: true, source });
       this.changed();
     }
 
-    /** Llamado por el SKL (a través del cable de llenado). */
-    receiveFill(key, protocol, source) {
-      if (!this.booted || this.knob === 'OFF') return { ok: false, reason: 'Equipo destino apagado: no responde' };
-      if (this.knob !== 'LD') return { ok: false, reason: 'La radio no está en posición LD (carga)' };
-      const i = this.ldSlot - 1;
-      const overwritten = !!this.slots[i];
-      this.slots[i] = {
-        tag: key.tag,
-        type: key.type,
-        alg: key.type === 'TEK' ? key.alg || 'VINSON' : null,
-        chk: key.chk,
-        src: source || 'SKL',
-        proto: protocol || 'DS-101',
-        loadedAt: this.env.now(),
-      };
-      this.screen = { id: 'LD', last: `${overwritten ? 'SOBRESCR' : 'RECIBIDO'} S${pad(this.ldSlot)} ${key.type}` };
-      this.emit('beep');
-      this.emit('fill', { slot: this.ldSlot, key, overwritten, source: source || 'SKL', protocol: protocol || 'DS-101' });
+    /** El SKL se conectó a J1 fuera de LD/RV: la radio entra en transmisión. */
+    fillHazard() {
+      if (!this.operating) return;
+      this.hazards++;
+      this.tx = true;
+      this.flash('ADF: TX AUTOMATICA!', 3000);
+      this.after(2000, () => {
+        this.tx = false;
+        this.changed();
+      });
+      this.emit('hazard');
       this.changed();
-      return { ok: true, slot: this.ldSlot, overwritten };
     }
 
-    // ---------------------------------------------------------------- TX / RX
+    // ================================================================ TX / RX
+    /** Clave de tráfico (TEK) que usará la red actual. */
+    netTek(n) {
+      const bank = BANK_OF[n.crypto];
+      return bank ? this.keys[bank].TEK[n.key - 1] : null;
+    }
+
     pttDown() {
       const fail = (reason, lcd) => {
         if (lcd && this.booted) this.flash(lcd, 2500);
         return { ok: false, reason };
       };
-      if (!this.booted || this.knob === 'OFF') return fail('La radio está apagada');
-      if (this.knob === 'LD') return fail('La radio está en modo LD (carga): gire la perilla a ON', 'MODO CARGA: NO TX');
-      if (this.knob === 'RMT') return fail('La radio está en control remoto (RMT)', 'PANEL EN REMOTO');
-      if (this.knob !== 'ON') return fail('La radio no está en ON');
+      if (!this.booted || this.sw === 'OFF') return fail('La radio está apagada');
+      if (this.sw === 'LD' || this.sw === 'RV') return fail(`El interruptor está en ${this.sw}: gírelo a PT, CT o TD`);
+      if (!this.operating) return fail('La radio no está operativa');
       const c = this.env.getConn();
-      if (!c.handset) return fail('No hay microteléfono conectado al conector de audio');
-      const p = this.preset;
-      if (p.traffic !== 'VOZ') return fail('El preset está configurado para DATOS: el PTT de voz está inhibido', 'TRAFICO DATOS');
-      if (p.crypto === 'CT') {
-        const k = this.slots[p.keySlot - 1];
-        if (!k || k.type !== 'TEK') return fail(`Preset en CT pero el slot ${pad(p.keySlot)} no tiene una TEK`, `ERROR S${pad(p.keySlot)} SIN TEK`);
-        const alg = k.alg || 'VINSON';
-        if (alg !== p.cryptoMode) return fail(`La TEK del slot ${pad(p.keySlot)} es ${alg} y el preset está en modo cripto ${p.cryptoMode}`, `CLAVE S${pad(p.keySlot)} NO ES ${p.cryptoMode}`);
+      if (c.j1 !== 'HANDSET') return fail('No hay microteléfono H-250 en J1 (AUDIO/DATA/FILL)');
+      if (this.mode === 'DAMA') {
+        if (!this.dama || this.dama.status !== 'CONNECTED') return fail('DAMA no está conectado a la red', 'DAMA NO CONECTADO');
+        if (this.dama.service !== 'ACTIVE') return fail('En DAMA hay que establecer la llamada antes de hablar: CALL > PLACE A CALL', 'SIN SERVICIO ACTIVO');
+        const cfg = this.damaCfgs[this.damaNets[this.damaCur].cfg];
+        if (this.secure && cfg.crypto !== 'NONE') {
+          const k = this.keys[BANK_OF[cfg.crypto]].TEK[cfg.key - 1];
+          if (!k) return fail(`No hay ${cfg.crypto} TEK ${pad(cfg.key)} cargada`, 'NO KEY');
+        }
+      } else {
+        const n = this.net;
+        if (this.mode !== 'NORMAL') return fail('Vuelva al modo NORMAL (MODE)');
+        if (n.rxOnly) return fail('El preset está en RECEIVE ONLY', 'RECEIVE ONLY');
+        if (this.secure && n.crypto !== 'NONE' && !this.netTek(n)) return fail(`No hay ${n.crypto} TEK ${pad(n.key)} cargada`, 'NO KEY');
+        if (n.type === 'HOP' && n.hop === 'SINCGARS') {
+          if (!this.keys.SINCGARS.TSK[n.hopset - 1]) return fail(`El compartimento de hopset ${pad(n.hopset)} está vacío`, 'HOPSET EMPTY');
+          if (!this.todSinc) return fail('SINCGARS necesita la hora de red (loadset con hora u OPT > TIME)', 'ERR: SIN TOD');
+        }
+        if (n.type === 'HOP' && n.hop === 'HAVEQUICK') {
+          if (!this.todHQ) return fail('HAVEQUICK necesita TOD: OPT > TIME > HAVE_QUICK o CALL > TOD SYNC', 'ERR: SIN TOD');
+          if (!this.keys.HAVEQUICK.WOD[new Date(this.env.now()).getUTCDate() - 1]) return fail('Falta la MWOD del día UTC actual', 'ERR: SIN MWOD');
+        }
       }
-      if (p.mode === 'SATCOM') {
-        if (p.satBw === 5 && (p.crypto !== 'CT' || p.cryptoMode !== 'ANDVT')) return fail('Un canal SATCOM de 5 kHz solo admite voz digital ANDVT (2400 bps): ponga CT y MODO CRIPTO ANDVT', 'CANAL 5K: USE ANDVT');
-        if (p.satType === 'DAMA' && !this.damaOk(p)) return fail('Sin acceso DAMA para esta red: PGM > ACCESO DAMA', 'SIN ACCESO DAMA');
-      }
-      const tt = transecType(p.mode);
-      if (tt) {
-        const t = this.slots[p.transecSlot - 1];
-        if (!t || t.type !== tt) return fail(`El modo ${p.mode} necesita una clave ${tt} en el slot ${pad(p.transecSlot)}`, `ERROR S${pad(p.transecSlot)} SIN ${tt}`);
-      }
-      if (p.mode === 'HQ' && !this.todValid) return fail('HAVE QUICK necesita la hora (TOD) sincronizada: PGM > SINCRONIZAR TOD', 'ERROR: SIN TOD');
-      if (c.antenna === 'NONE') this.flash('ALARMA: VSWR ALTO', 2500);
       this.rx = null;
       this.tx = true;
       this.txStart = this.env.now();
@@ -674,25 +1358,31 @@
     }
 
     linkSnapshot() {
-      const p = Object.assign({}, this.preset);
-      const key = p.crypto === 'CT' ? this.slots[p.keySlot - 1] : null;
-      const tt = transecType(p.mode);
-      const tr = tt ? this.slots[p.transecSlot - 1] : null;
+      if (this.mode === 'DAMA') return Object.assign({ dama: true, presetNum: this.damaCur }, this.damaSnapshot());
+      const n = Object.assign({}, this.net);
+      const tek = this.netTek(n);
+      const hop = n.type === 'HOP' && n.hop === 'SINCGARS' ? this.keys.SINCGARS.TSK[n.hopset - 1] : null;
+      const wod = this.keys.HAVEQUICK.WOD[new Date(this.env.now()).getUTCDate() - 1];
+      const sf = n.type === 'SAT' ? satFreqs(n) : null;
       return {
-        preset: p,
-        presetNum: this.cur + 1,
-        keyTag: key && key.type === 'TEK' ? key.tag : null,
-        keyAlg: key && key.type === 'TEK' ? key.alg || 'VINSON' : null,
-        transecTag: tr && tr.type === tt ? tr.tag : null,
-        damaOk: p.mode === 'SATCOM' && p.satType === 'DAMA' && this.damaOk(p),
-        todValid: this.todValid,
+        dama: false,
+        net: n,
+        presetNum: this.cur,
+        secure: this.secure,
+        keyTag: tek ? tek.tag : null,
+        hopTag: hop ? hop.tag : null,
+        hopNetId: hop ? hop.netId : null,
+        wodTag: wod ? wod.tag : null,
+        todHQ: !!this.todHQ,
+        todSinc: !!this.todSinc,
+        sat: sf ? Object.assign({ bw: satBw(n) }, sf) : null,
         conn: Object.assign({}, this.env.getConn()),
-        powerW: powerOf(p.power).w,
-        powerKm: powerOf(p.power).km,
+        powerW: n.power,
+        rangeKm: rangeKm(n.power),
+        port: antennaPort(n),
       };
     }
 
-    /** Recepción de una transmisión simulada. */
     receive({ from, clear, dur }) {
       if (!this.operating || this.tx) return false;
       const token = {};
@@ -708,11 +1398,15 @@
       return true;
     }
 
-    // ---------------------------------------------------------------- batería
     tick(dtSec) {
-      if (!this.booted || this.knob === 'OFF') return;
+      if (!this.booted) return;
       const before = Math.ceil(this.battery);
       this.battery = Math.max(0, this.battery - dtSec * (this.tx ? 0.08 : 0.01));
+      this._eti = (this._eti || 0) + dtSec;
+      if (this._eti >= 60) {
+        this._eti -= 60;
+        this.etiMin++;
+      }
       if (this.battery <= 0) {
         this.clearTimers();
         this.booted = false;
@@ -727,216 +1421,256 @@
 
     replaceBattery() {
       this.battery = 100;
-      if (this.knob !== 'OFF' && this.knob !== 'Z' && !this.booted) this.boot();
+      if (!['OFF', 'CLR'].includes(this.sw) && !this.booted) this.boot();
       this.changed();
     }
 
-    // ---------------------------------------------------------------- pantalla
-    mainPages() {
-      const p = this.preset;
-      const pw = powerOf(p.power);
-      const pages = [];
-      if (p.mode === 'SATCOM' && p.satType === 'DAMA') pages.push(`DIR ${pad(p.damaAddr, 5)} ${this.damaOk(p) ? 'ACCESO OK' : 'SIN ACCESO'}`);
-      else if (p.mode === 'SATCOM') pages.push(`RX ${p.satRx.toFixed(4)} ${pw.w}W`);
-      pages.push(`${pw.w}W ${p.traffic}${p.mode === 'LOS' ? ' BW' + p.bw + 'K' : ''}${this.squelch ? ' SQL' : ''}`);
-      if (p.crypto === 'CT') {
-        const k = this.slots[p.keySlot - 1];
-        pages.push(`TEK S${pad(p.keySlot)} ${k ? k.tag : 'VACIO!'}`);
-        pages.push(`CRIPTO ${p.cryptoMode}${k && (k.alg || 'VINSON') !== p.cryptoMode ? ' CLAVE!' : ''}`);
-      } else pages.push('PT - SIN CIFRADO');
-      const tt = transecType(p.mode);
-      if (tt) {
-        const t = this.slots[p.transecSlot - 1];
-        pages.push(`${tt} S${pad(p.transecSlot)} ${t ? t.tag : 'VACIO!'}`);
-      }
-      pages.push(`BAT ${Math.ceil(this.battery)}% TOD:${this.todValid ? 'OK' : '--'}`);
-      return pages;
+    // ================================================================ pantalla
+    swTag() {
+      return SW_LABEL[this.sw];
     }
 
-    channelLine(p) {
-      if (p.mode === 'LOS') return `LOS ${p.mod} ${p.freq.toFixed(4)}`;
-      if (p.mode === 'SINCGARS') return `SINC FM  RED ${pad(p.netId, 3)}`;
-      if (p.mode === 'HQ') return `HQII AM  RED ${pad(p.hqNet, 3)}`;
-      if (p.satType === 'DAMA') return `DAMA ${p.damaSat} RED ${pad(p.damaNet)} ${p.satBw}K`;
-      return `SAT ${p.satBw}K TX ${p.satTx.toFixed(4)}`;
+    cryptoLine(crypto, key) {
+      if (crypto === 'NONE') return lr('NONE', this.swTag(), W);
+      const bank = BANK_OF[crypto];
+      const has = bank && this.keys[bank].TEK[key - 1];
+      return lr(`${crypto} ${has ? 'TEK' + pad(key) : 'NO KEY'}`, this.swTag(), W);
+    }
+
+    view_MAIN() {
+      const rt = this.tx ? 'T' : this.rx ? 'R' : ' ';
+      if (this.mode === 'DAMA') return this.viewDama(rt);
+      const n = this.net;
+      const l1 = lr(`${rt} ${pad(this.cur)}*${n.name}`, 'NORM', W);
+      const l2 = this.cryptoLine(n.crypto, n.key);
+      const pages = [];
+      const sqS = { TONE: 'TON', NOISE: 'NOI', OFF: 'OFF' };
+      if (n.type === 'LOS') {
+        pages.push([cols('LOS', 'VOC', 'OFF', n.mod, sqS[n.sq]), 'TYPE ADF DATA MODE SQL']);
+        pages.push([`R:${f5(n.rx)}  ${n.crypto === 'NONE' ? 'ANLG' : '16K'}`, `T:${f5(n.tx)}  ${String(n.power).padStart(4)}W`]);
+      } else if (n.type === 'SAT') {
+        const sf = satFreqs(n);
+        pages.push([cols('SAT', 'VOC', 'OFF', '181', n.dsq === 'ON' ? 'DIG' : 'OFF'), 'TYPE ADF DATA MODE SQL']);
+        pages.push([`R:${f5(sf.rx)} ${n.crypto === 'VINSON' ? '16K' : '2.4K'}`, `T:${f5(sf.tx)}   ${pad(n.code, 3)}`]);
+        const voc = n.crypto === 'ANDVT' ? n.voice : n.crypto === 'VINSON' ? 'CVSD' : 'NONE';
+        pages.push([`${satBw(n)}KHZ ${voc} FSK ${n.crypto === 'VINSON' ? '132' : n.opt}`, 'BW   VOC  MOD OPT']);
+      } else if (n.hop === 'SINCGARS') {
+        const t = this.keys.SINCGARS.TSK[n.hopset - 1];
+        const st = !t ? 'EMP' : !this.todSinc ? 'ERR' : 'OK ';
+        pages.push([cols('SINC', 'VOC', 'OFF', t ? 'F' + pad(t.netId, 3) : '----', st), 'TYPE ADF DATA NET  ST']);
+        pages.push([`HOPSET ${pad(n.hopset)} ${t ? 'F' + pad(t.netId, 3) : 'EMPTY'}`, `TOD ${this.todSinc ? 'OK' : '--'}  ${String(n.power).padStart(4)}W`]);
+      } else {
+        const wod = this.keys.HAVEQUICK.WOD[new Date(this.env.now()).getUTCDate() - 1];
+        const st = !this.todHQ || !wod ? 'ERR' : 'OK';
+        pages.push([cols('HVQK', 'VOC', 'OFF', 'AM', st), 'TYPE ADF DATA MODE ST']);
+        pages.push([`NET ${n.hqNet}  ${String(n.power).padStart(4)}W`, `TOD ${this.todHQ ? 'OK' : '--'} MWOD ${wod ? 'OK' : '--'}`]);
+      }
+      const p = pages[this.page % pages.length];
+      return [l1, l2, p[0], p[1]];
+    }
+
+    viewDama(rt) {
+      const d = this.damaNets[this.damaCur];
+      const c = this.damaCfgs[d.cfg];
+      const st = this.dama ? this.dama.status : 'DISABLE';
+      const sc = satCode(d.channel);
+      const bw = sc && !sc.manual ? sc.bw : 25;
+      const l1 = lr(`${rt} ${this.damaCur}-${d.name}`, 'DAMA', W);
+      const l2 = this.cryptoLine(c.crypto, c.key);
+      const statusText = {
+        CONFIG: 'CONFIGURING', ACQUIRING: 'ACQUIRING', RANGING: 'RANGING IN PROG', 'LOGGING IN': 'LOGGING IN',
+        CONNECTED: 'CONNECTED', ERROR: `ERROR ${this.dama && this.dama.err ? this.dama.err : ''}`, DISABLE: 'DISABLE',
+      }[st];
+      const pages = [
+        [lr(statusText, bw === 25 ? '25K-AC' : '5KHZ', W), 'NETWORK'],
+        [`R:${sc && !sc.manual ? sc.rx.toFixed(3) : '---.---'} OW:${d.ow === 'ON' ? 'CT' : 'PT'}`, `T:${sc && !sc.manual ? sc.tx.toFixed(3) : '---.---'} ${d.txCap} ${pad(d.channel, 3)}`],
+        [lr(`${d.cfg}-${c.name}`, '', W), `${this.dama ? this.dama.service : 'IDLE'}  SERVICE`],
+        [`TO: ${this.dama && this.dama.call ? pad(this.dama.call.dest[0] || 0, 5) : '-----'}`, `${c.voice} ${c.crypto === 'ANDVT' ? '2400' : '16K'} CFG ${c.code25}`],
+      ];
+      const p = pages[this.page % pages.length];
+      return [l1, l2, p[0], p[1]];
     }
 
     view_BOOT() {
       const s = this.screen.step;
-      return ['AN/PRC-117F  (SIM)', 'AUTOPRUEBA INICIAL', '#'.repeat(s * 5).padEnd(20, '.'), s >= 3 ? 'CARGANDO PRESETS' : 'VERIFICANDO...'];
+      return ['AN/PRC-117F (SIM)', 'POWER-ON SELF TEST', '#'.repeat(s * 5).padEnd(20, '.'), 'ESPERE...'];
     }
-    view_ZMSG() {
-      return ['** ZEROIZE **', 'BORRADO DE EMERGENCIA', 'TODAS LAS CLAVES', 'ELIMINADAS'];
+    view_ZALL() {
+      return ['', 'ZEROIZE PASSED', 'RESET RADIO', ''];
     }
-    view_MAIN() {
-      const p = this.preset;
-      const pages = this.mainPages();
-      this.page = Math.min(this.page, pages.length - 1);
-      let l4;
-      if (this.tx) l4 = 'TX >>>>>>>>';
-      else if (this.rx) l4 = this.rx.clear ? 'RX <<<<<<<<' : 'RX <<<< ????';
-      else if (this.env.getConn().antenna === 'NONE') l4 = 'ALARMA: SIN ANTENA';
-      else if (this.battery <= 15) l4 = 'BATERIA BAJA';
-      else l4 = `PAG ${this.page + 1}/${pages.length}  ▲▼`;
-      const ct = p.crypto === 'CT' ? (p.cryptoMode === 'ANDVT' ? 'CT ANDVT' : 'CT VIN') : 'PT';
-      return [lr(`P${pad(this.cur + 1)} ${p.name}`, ct, W), this.channelLine(p), pages[this.page], l4];
+    view_NOTICE() {
+      return this.screen.lines.slice();
     }
-    view_PRESET_ENTRY() {
-      return ['SELECCION PRESET', `PRESET: ${this.screen.buf}_`, `(01-${NUM_PRESETS})`, 'ENT=OK  CLR=SALIR'];
+    view_RV() {
+      return [lr('RV', 'RV', W), 'RECEIVE VARIABLE', 'OTAR/OTAT', 'NO SIMULADO'];
+    }
+    view_INFO() {
+      const l = this.screen.lines.slice(0, 4);
+      while (l.length < 4) l.push('');
+      return l;
+    }
+    view_BIT() {
+      if (!this.screen.done) return ['TEST', 'BIT IN PROGRESS', '', ''];
+      return ['TEST', this.bitResult.pass ? 'BIT PASSED' : 'BIT FAILED', this.bitResult.pass ? 'HUB OK' : 'BATERIA BAJA', 'CLR=SALIR'];
+    }
+    view_RSSI() {
+      const s = this.screen;
+      const n = this.net;
+      const l1 = lr(`${n.crypto} TEK${pad(n.key)}`, this.swTag(), W);
+      if (s.stage === 0) return [l1, 'PRESS ENT', 'RSSI', 'CLR=SALIR'];
+      if (s.stage === 1) return [l1, 'RSSI TEST', 'PINGING SATELLITE...', ''];
+      return [l1, `RSSI SCORE: ${pad(s.score, 3)}`, s.score >= 80 ? 'APUNTAMIENTO OK' : 'REORIENTE ANTENA', 'ENT=REPETIR CLR=SALIR'];
+    }
+    view_TODRX() {
+      const s = this.screen;
+      if (!s.done) return ['TOD SYNC', 'WAITING FOR', 'RECEPTION', ''];
+      return s.ok ? ['TOD SYNC', 'SUCCESSFUL RECEIVE', SIM.utcStamp(this.env.now()).slice(0, 19), 'PRESS CLR'] : ['TOD SYNC', 'NO RECEPTION', '', 'PRESS CLR'];
+    }
+    view_FILL() {
+      const s = this.screen;
+      const lab = this.fillLabel(s.req);
+      switch (s.stage) {
+        case 'READY': return ['FILL MENU', 'PRESS ENTER', 'TO INITIATE', lab];
+        case 'PROGRESS': return ['FILL MENU', 'FILL IN PROGRESS', '', lab];
+        case 'STORE': return ['FILL MENU', 'KEY STORE', 'IN PROGRESS', lab];
+        case 'DONE': return ['FILL MENU', 'FILL DONE', 'PRESS ANY KEY', lab];
+        case 'BAD': return ['FILL MENU', 'BAD FILL', 'PRESS ANY KEY', lab];
+        case 'MORE': return ['FILL MENU', 'MORE FILL DATA?', blink(s.more), lab];
+        default: return ['FILL MENU', 'CHANGE SW FROM LD', '', lab];
+      }
     }
     view_MENU() {
       const s = this.screen;
-      const items = s.items();
-      const start = Math.max(0, Math.min(s.idx - 1, items.length - 3));
+      const items = typeof s.items === 'function' ? s.items() : s.items;
+      s.idx = Math.min(s.idx, items.length - 1);
+      // reparte los elementos en filas de 22 columnas
       const rows = [];
-      for (let i = start; i < Math.min(items.length, start + 3); i++) rows.push((i === s.idx ? '>' : ' ') + items[i].label);
-      while (rows.length < 3) rows.push('');
-      return [lr(s.title, `${s.idx + 1}/${items.length}`, W), ...rows];
+      let row = [];
+      let w = 0;
+      items.forEach((it, i) => {
+        const len = it.label.length + 1;
+        if (w + len > W && row.length) {
+          rows.push(row);
+          row = [];
+          w = 0;
+        }
+        row.push(i);
+        w += len;
+      });
+      if (row.length) rows.push(row);
+      const r = rows.findIndex((rr) => rr.includes(s.idx));
+      const start = Math.max(0, Math.min(r, rows.length - 2));
+      const lines = rows.slice(start, start + 2).map((rr) => rr.map((i) => (i === s.idx ? blink(items[i].label) : items[i].label)).join(' '));
+      while (lines.length < 2) lines.push('');
+      return [lr(s.title, this.swTag(), W), lines[0], lines[1], 'USE < > TO SELECT ITEM'];
     }
-    view_CONFIRM() {
-      return ['CONFIRMAR', ...this.screen.lines];
-    }
-    view_FIELDS() {
+    view_WIZ() {
       const s = this.screen;
-      const p = this.presets[s.p];
-      const f = fieldsFor(p);
-      s.idx = Math.min(s.idx, f.length - 1);
-      const start = Math.max(0, Math.min(s.idx - 1, f.length - 3));
-      const rows = [];
-      for (let i = start; i < Math.min(f.length, start + 3); i++) {
-        rows.push((i === s.idx ? '>' : ' ') + lr(fieldLabel(f[i], p), fieldValue(f[i], p), W - 1));
+      const fd = this.curField();
+      if (!fd) return [s.title, '', '', ''];
+      const ed = s.ed || {};
+      const l1 = lr(s.title, this.swTag(), W);
+      if (fd.kind === 'choice') {
+        const v = fd.fmt ? fd.fmt(ed.val) : String(ed.val);
+        return [l1, fd.label, blink(v), '6/9=▲▼  ENT  CLR'];
       }
-      while (rows.length < 3) rows.push('');
-      return [lr(`P${pad(s.p + 1)} PROGRAMAR`, `${s.idx + 1}/${f.length}`, W), ...rows];
-    }
-    view_EDIT() {
-      const s = this.screen;
-      const p = this.presets[s.p];
-      const def = FIELDS[s.field];
-      let val;
-      if (def.type === 'enum') val = def.fmt ? def.fmt(s.val) : String(s.val);
-      else val = s.buf ? s.buf + '_' : fieldValue(s.field, p);
-      const dec = DECIMAL_FIELDS.includes(s.field);
-      const hint = def.type === 'enum' ? '▲▼ CAMBIAR ENT=OK' : dec ? '0-9 . ENT=OK CLR=<' : '0-9 ENT=OK CLR=<';
-      const range = s.field === 'satTx' ? 'SUBIDA 292-318 MHZ' : s.field === 'satRx' ? 'BAJADA 243-270 MHZ' : '';
-      return [`P${pad(s.p + 1)} ${fieldLabel(s.field, p)}`, `> ${val}${dec ? ' MHZ' : ''}`, hint, range];
-    }
-    view_SLOTINFO() {
-      const k = this.slots[this.screen.i];
-      if (!k) return [`SLOT ${pad(this.screen.i + 1)}`, 'VACIO', '', 'CLR=VOLVER'];
-      return [
-        lr(`SLOT ${pad(this.screen.i + 1)}`, k.type + (k.alg ? ' ' + k.alg : ''), W),
-        k.tag,
-        `CHK ${k.chk} ${k.proto || ''}`,
-        `${SIM.hhmmss(k.loadedAt)} ${k.src === 'KYK-13' ? 'KYK-13' : 'SKL'}`,
-      ];
-    }
-    view_INFO() {
-      return ['AN/PRC-117F (SIM)', 'SW ENTRENAMIENTO 1.0', 'S/N SIM-0117', `CLAVES ${pad(this.slots.filter(Boolean).length)}/${NUM_SLOTS}`];
-    }
-    view_DAMA() {
-      const s = this.screen;
-      const p = this.preset;
-      if (!s.done) return ['ACCESO DAMA', `${p.damaSat} RED ${pad(p.damaNet)}`, `DIR ${pad(p.damaAddr, 5)}`, 'SOLICITANDO...'];
-      return ['ACCESO DAMA', s.ok ? 'ACCESO CONCEDIDO' : 'ACCESO DENEGADO', s.ok ? `${p.damaSat} RED ${pad(p.damaNet)}` : s.why, 'CLR=VOLVER'];
-    }
-    view_TOD() {
-      if (!this.screen.done) return ['SINCRONIZAR TOD', 'RECIBIENDO HORA...', '', ''];
-      const d = new Date(this.env.now());
-      const z = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}Z`;
-      return ['SINCRONIZAR TOD', 'TOD SINCRONIZADO', z, 'CLR=VOLVER'];
-    }
-    view_BIT() {
-      const s = this.screen;
-      if (!s.done) return ['AUTOPRUEBA BIT', 'PRUEBA EN CURSO...', 'NO TRANSMITIR', ''];
-      const r = this.bitResult;
-      return [lr('BIT', r.pass ? 'SUPERADA' : 'FALLIDA', W), r.items[s.scroll] || '', r.items[s.scroll + 1] || '', '▲▼ VER   CLR=SALIR'];
-    }
-    view_LD() {
-      const s = this.slots[this.ldSlot - 1];
-      return [
-        'MODO CARGA (LD)',
-        lr(`SLOT DESTINO S${pad(this.ldSlot)}`, '▲▼', W),
-        s ? `ACT ${s.type} ${s.tag}` : "ACTUAL: VACIO",
-        this.screen.last || 'ESPERANDO DISPOSITIVO',
-      ];
-    }
-    view_RMT() {
-      return ['CONTROL REMOTO', 'PANEL BLOQUEADO', '', 'GIRE A ON PARA LOCAL'];
+      if (fd.kind === 'info') return [l1, fd.label, fd.lines[0] || '', fd.lines[1] || 'ENT=CONTINUAR'];
+      if (fd.kind === 'num') {
+        const str = ed.chars.join('');
+        const shown = ed.cur >= 0 ? str.slice(0, ed.cur) + blink(str[ed.cur]) + str.slice(ed.cur + 1) : str;
+        const raw = fd.parse ? fd.parse(str) : Number(str);
+        const sfx = fd.suffix ? ' ' + fd.suffix(raw) : fd.unit ? ' ' + fd.unit : '';
+        return [l1, fd.label, `${fd.prefix || ''}${shown}${sfx}`, 'NUM ◄► CLR ENT'];
+      }
+      // texto
+      const chars = ed.chars.slice();
+      const shown = chars.map((ch, i) => (i === ed.cur ? blink(ch || ' ') : ch)).join('') + (ed.cur >= chars.length ? blink(' ') : '');
+      return [l1, fd.label, shown, '1=ABC 2=DEF ... ►'];
     }
 
     display() {
       const blank = { lines: ['', '', '', ''], ann: {}, lit: false };
-      if (this.knob === 'OFF' || this.screen.id === 'OFF' || this.battery <= 0) return blank;
+      if (['OFF', 'CLR'].includes(this.sw) || this.screen.id === 'OFF' || this.battery <= 0) return blank;
       const view = this['view_' + this.screen.id];
       if (!view) return blank;
       const lines = view.call(this).slice(0, 4);
       while (lines.length < 4) lines.push('');
-      if (this.msg && this.screen.id !== 'BOOT' && this.screen.id !== 'ZMSG') lines[3] = this.msg;
-      const p = this.preset;
+      if (this.msg && !['BOOT', 'ZALL'].includes(this.screen.id)) lines[3] = this.msg;
       return {
         lines: lines.map((l) => fit(l, W)),
         lit: true,
-        ann: {
-          TX: this.tx,
-          RX: !!this.rx,
-          CT: this.booted && p.crypto === 'CT',
-          MODE: this.booted ? MODE_SHORT[p.mode] : '',
-          BAT: this.battery <= 15,
-          LD: this.knob === 'LD',
-        },
+        light: this.light,
+        ann: { T: this.tx, R: !!this.rx, BAT: this.battery <= 15 },
       };
     }
 
-    // ---------------------------------------------------------------- persistencia
+    // ================================================================ persistencia
     serialize() {
       return {
-        presets: this.presets,
-        slots: this.slots,
+        v: 2,
+        nets: this.nets,
+        damaNets: this.damaNets,
+        damaCfgs: this.damaCfgs,
+        damaDests: this.damaDests,
+        keys: this.keys,
         cur: this.cur,
+        damaCur: this.damaCur,
         volume: this.volume,
         light: this.light,
-        squelch: this.squelch,
-        keyTone: this.keyTone,
         battery: this.battery,
-        ldSlot: this.ldSlot,
+        etiMin: this.etiMin,
       };
     }
 
     load(o) {
-      if (!o || typeof o !== 'object') return;
-      if (Array.isArray(o.presets) && o.presets.length === NUM_PRESETS) {
-        const def = defaultPresets();
-        this.presets = o.presets.map((p, i) => Object.assign(def[i], p));
+      if (!o || typeof o !== 'object' || o.v !== 2) return;
+      const merge = (arr, def, n) => (Array.isArray(arr) && arr.length === n ? arr.map((x, i) => Object.assign(def(i), x)) : null);
+      this.nets = merge(o.nets, defNet, NUM_NETS) || this.nets;
+      this.damaNets = merge(o.damaNets, defDama, NUM_DAMA) || this.damaNets;
+      this.damaCfgs = merge(o.damaCfgs, defCfg, NUM_DAMA) || this.damaCfgs;
+      this.damaDests = merge(o.damaDests, defDest, NUM_DEST) || this.damaDests;
+      if (o.keys && typeof o.keys === 'object') {
+        const k = emptyBanks();
+        for (const b of Object.keys(k)) {
+          if (!o.keys[b]) continue;
+          for (const t of Object.keys(k[b])) {
+            const src = o.keys[b][t];
+            if (Array.isArray(k[b][t]) && Array.isArray(src) && src.length === k[b][t].length) k[b][t] = src.map((x) => (x && x.tag ? x : null));
+            else if (!Array.isArray(k[b][t]) && src && src.tag) k[b][t] = src;
+          }
+        }
+        this.keys = k;
       }
-      if (Array.isArray(o.slots) && o.slots.length === NUM_SLOTS) this.slots = o.slots.map((s) => (s && s.tag ? s : null));
-      if (Number.isInteger(o.cur) && o.cur >= 0 && o.cur < NUM_PRESETS) this.cur = o.cur;
+      if (Number.isInteger(o.cur) && o.cur >= 0 && o.cur < NUM_NETS) this.cur = o.cur;
+      if (Number.isInteger(o.damaCur) && o.damaCur >= 0 && o.damaCur < NUM_DAMA) this.damaCur = o.damaCur;
       if (Number.isFinite(o.volume)) this.volume = Math.max(0, Math.min(8, o.volume));
-      if (typeof o.light === 'boolean') this.light = o.light;
-      if (typeof o.squelch === 'boolean') this.squelch = o.squelch;
-      if (typeof o.keyTone === 'boolean') this.keyTone = o.keyTone;
+      if (Number.isInteger(o.light)) this.light = o.light % 4;
       if (Number.isFinite(o.battery)) this.battery = Math.max(0, Math.min(100, o.battery));
-      if (Number.isInteger(o.ldSlot) && o.ldSlot >= 1 && o.ldSlot <= NUM_SLOTS) this.ldSlot = o.ldSlot;
+      if (Number.isInteger(o.etiMin)) this.etiMin = o.etiMin;
       this.changed();
     }
 
-    setVolume(v) {
-      this.volume = Math.max(0, Math.min(8, v));
-      this.changed();
+    /** Número de claves cargadas en todos los bancos. */
+    keyCount() {
+      let n = 0;
+      for (const b of Object.values(this.keys)) for (const v of Object.values(b)) n += Array.isArray(v) ? v.filter(Boolean).length : v ? 1 : 0;
+      return n;
     }
   }
 
-  Radio.MODES = MODES;
-  Radio.POWER = POWER;
-  Radio.NUM_PRESETS = NUM_PRESETS;
-  Radio.NUM_SLOTS = NUM_SLOTS;
-  Radio.KNOB = KNOB;
-  Radio.BANDS = BANDS;
-  Radio.SAT_BANDS = SAT_BANDS;
-  Radio.CRYPTO_MODES = CRYPTO_MODES;
-  Radio.fieldsFor = fieldsFor;
-  Radio.validateNum = validateNum;
-  Radio.powerOf = powerOf;
-  Radio.transecType = transecType;
+  Radio.SW = SW;
+  Radio.SW_LABEL = SW_LABEL;
+  Radio.POWERS = POWERS;
+  Radio.NUM_NETS = NUM_NETS;
+  Radio.CRYPTO_TYPES = CRYPTO_TYPES;
+  Radio.KEY_TYPES = KEY_TYPES;
+  Radio.BANK_OF = BANK_OF;
+  Radio.satCode = satCode;
+  Radio.satBw = satBw;
+  Radio.satFreqs = satFreqs;
+  Radio.powerOptions = powerOptions;
+  Radio.cryptoOptions = cryptoOptions;
+  Radio.antennaPort = antennaPort;
+  Radio.rangeKm = rangeKm;
   SIM.Radio = Radio;
 })(typeof window !== 'undefined' ? window : globalThis);
