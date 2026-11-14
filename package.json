@@ -1,0 +1,11 @@
+{
+  "name": "simulador-prc117f-skl",
+  "version": "1.0.0",
+  "description": "Simulador de entrenamiento de la radio AN/PRC-117F y del cargador de claves SKL AN/PYQ-10",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "python3 -m http.server 8080"
+  },
+  "license": "MIT"
+}

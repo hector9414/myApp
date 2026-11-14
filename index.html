@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulador PRC-117F + SKL</title>
+  <meta name="description" content="Simulador de entrenamiento de la radio AN/PRC-117F y del cargador de claves SKL AN/PYQ-10">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <h1>Simulador AN/PRC-117F <span class="plus">+</span> SKL AN/PYQ-10</h1>
+      <p class="sub">Entrenador de operación de radio y carga de claves · uso educativo</p>
+    </div>
+    <div class="header-tools">
+      <label class="field">Indicativo propio
+        <input id="my-call" type="text" maxlength="20" value="Lobo 2" autocomplete="off">
+      </label>
+      <label class="switch"><input id="pref-hints" type="checkbox" checked> Ayudas del instructor</label>
+      <label class="switch"><input id="pref-voice" type="checkbox"> Voz sintetizada</label>
+      <button id="btn-reset" class="btn ghost" type="button">Reiniciar todo</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ============================== RADIO ============================== -->
+    <section class="card device-card" aria-labelledby="radio-title">
+      <h2 id="radio-title" class="card-title">Radio AN/PRC-117F</h2>
+      <div class="radio">
+        <div class="radio-top">
+          <div class="knob-wrap">
+            <div class="knob" id="func-knob" role="radiogroup" aria-label="Perilla de función">
+              <div class="knob-dial"><div class="knob-pointer"></div></div>
+              <button type="button" class="knob-pos" data-knob="Z" title="Zeroize (borrado de emergencia)">Z</button>
+              <button type="button" class="knob-pos" data-knob="OFF" title="Apagado">OFF</button>
+              <button type="button" class="knob-pos" data-knob="ON" title="Operación">ON</button>
+              <button type="button" class="knob-pos" data-knob="LD" title="Carga de claves">LD</button>
+              <button type="button" class="knob-pos" data-knob="RMT" title="Control remoto">RMT</button>
+            </div>
+            <span class="knob-label">FUNCIÓN</span>
+          </div>
+          <div class="ports">
+            <div class="port" id="port-ant"><span class="led"></span>ANT</div>
+            <div class="port" id="port-audio"><span class="led"></span>AUDIO</div>
+            <div class="port" id="port-fill"><span class="led"></span>FILL</div>
+          </div>
+          <div class="volume" aria-label="Volumen">
+            <button type="button" class="btn-round" id="vol-down" aria-label="Bajar volumen">−</button>
+            <div class="vol-meter"><span id="vol-value">4</span><small>VOL</small></div>
+            <button type="button" class="btn-round" id="vol-up" aria-label="Subir volumen">+</button>
+          </div>
+        </div>
+
+        <div class="lcd-bezel">
+          <div class="annunciators" id="radio-ann">
+            <span data-ann="TX">TX</span><span data-ann="RX">RX</span><span data-ann="CT">CT</span>
+            <span data-ann="LD">LD</span><span data-ann="BAT">BAT</span><span data-ann="MODE" class="mode"></span>
+          </div>
+          <div class="lcd" id="radio-lcd" aria-live="polite">
+            <div class="lcd-line"></div><div class="lcd-line"></div><div class="lcd-line"></div><div class="lcd-line"></div>
+          </div>
+        </div>
+
+        <div class="keypad" id="radio-keypad">
+          <button type="button" data-key="1">1</button>
+          <button type="button" data-key="2">2</button>
+          <button type="button" data-key="3">3</button>
+          <button type="button" data-key="PGM" class="fn">PGM</button>
+          <button type="button" data-key="4">4</button>
+          <button type="button" data-key="5">5</button>
+          <button type="button" data-key="6">6</button>
+          <button type="button" data-key="OPT" class="fn">OPT</button>
+          <button type="button" data-key="7">7</button>
+          <button type="button" data-key="8">8</button>
+          <button type="button" data-key="9">9</button>
+          <button type="button" data-key="MODE" class="fn">MODE</button>
+          <button type="button" data-key="CLR" class="fn">CLR</button>
+          <button type="button" data-key="0">0</button>
+          <button type="button" data-key="." aria-label="Punto decimal">.</button>
+          <button type="button" data-key="ENT" class="fn ent">ENT</button>
+          <button type="button" data-key="LEFT" class="nav" aria-label="Izquierda">◄</button>
+          <button type="button" data-key="UP" class="nav" aria-label="Arriba">▲</button>
+          <button type="button" data-key="DOWN" class="nav" aria-label="Abajo">▼</button>
+          <button type="button" data-key="RIGHT" class="nav" aria-label="Derecha">►</button>
+          <button type="button" data-key="PRE-" class="fn">PRE −</button>
+          <button type="button" data-key="PRE+" class="fn">PRE +</button>
+          <button type="button" data-key="CTPT" class="fn">CT/PT</button>
+          <button type="button" data-key="LUZ" class="fn">LUZ</button>
+          <button type="button" data-key="ZERO" class="fn danger wide">ZERO</button>
+        </div>
+      </div>
+
+      <div class="handset" id="handset">
+        <div class="handset-head">
+          <strong>Microteléfono</strong>
+          <span id="handset-state" class="pill">desconectado</span>
+        </div>
+        <label class="field grow">Mensaje a transmitir
+          <input id="tx-text" type="text" maxlength="160" autocomplete="off"
+                 placeholder="Halcón 6, aquí Lobo 2, prueba de radio, cambio">
+        </label>
+        <button type="button" id="ptt" class="ptt" aria-label="PTT: mantener pulsado para transmitir">
+          PTT<small>mantener · barra espaciadora</small>
+        </button>
+      </div>
+    </section>
+
+    <!-- ============================== SKL ============================== -->
+    <section class="card device-card" aria-labelledby="skl-title">
+      <h2 id="skl-title" class="card-title">SKL AN/PYQ-10</h2>
+      <div class="skl">
+        <div class="skl-screen" id="skl-screen" aria-live="polite"></div>
+        <div class="skl-controls">
+          <div class="cik-slot" id="cik-slot"><span class="led"></span>CIK</div>
+          <div class="cik-slot" id="skl-fill"><span class="led"></span>FILL</div>
+          <button type="button" id="skl-power" class="btn-power" aria-label="Encender o apagar el SKL">⏻</button>
+        </div>
+      </div>
+
+      <div class="conn" aria-labelledby="conn-title">
+        <h3 id="conn-title">Conexiones y accesorios</h3>
+        <fieldset class="seg">
+          <legend>Antena de la radio</legend>
+          <label><input type="radio" name="antenna" value="NONE" checked> Ninguna</label>
+          <label><input type="radio" name="antenna" value="WHIP"> Látigo VHF/UHF</label>
+          <label><input type="radio" name="antenna" value="SATCOM"> SATCOM</label>
+        </fieldset>
+        <div class="toggles">
+          <label class="switch"><input type="checkbox" id="conn-handset"> Microteléfono (AUDIO)</label>
+          <label class="switch"><input type="checkbox" id="conn-fill"> Cable de llenado SKL ↔ radio</label>
+          <label class="switch"><input type="checkbox" id="conn-cik"> CIK insertado en el SKL</label>
+        </div>
+        <div class="battery">
+          <span>Batería de la radio</span>
+          <div class="bar"><div id="bat-bar"></div></div>
+          <span id="bat-text">100 %</span>
+          <button type="button" id="bat-replace" class="btn small">Reemplazar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== EJERCICIOS ============================== -->
+    <section class="card" aria-labelledby="sc-title">
+      <h2 id="sc-title" class="card-title">Ejercicios</h2>
+      <div class="sc-list" id="sc-list"></div>
+      <div class="sc-detail" id="sc-detail"></div>
+    </section>
+
+    <!-- ============================== REGISTRO ============================== -->
+    <section class="card log-card" aria-labelledby="log-title">
+      <div class="card-head">
+        <h2 id="log-title" class="card-title">Registro de comunicaciones</h2>
+        <button type="button" id="log-clear" class="btn small ghost">Limpiar</button>
+      </div>
+      <ol class="log" id="log" aria-live="polite"></ol>
+      <details class="guide">
+        <summary>Orden de comunicaciones del ejercicio (estaciones de la red)</summary>
+        <ul id="stations"></ul>
+      </details>
+      <details class="guide">
+        <summary>Guía rápida del teclado</summary>
+        <ul>
+          <li><b>Perilla</b>: OFF · ON (operación) · LD (recibir claves del SKL) · RMT (remoto, panel bloqueado) · Z (borrado de emergencia, vuelve sola).</li>
+          <li><b>PGM</b>: programación (presets, claves, TOD, autoprueba). <b>OPT</b>: opciones (squelch, luz, tono, potencia).</li>
+          <li><b>▲▼</b> moverse · <b>ENT</b> aceptar · <b>CLR</b> volver/borrar · <b>◄►</b> cambiar opción.</li>
+          <li><b>PRE + / PRE −</b> cambiar de preset · un número + ENT va directo a ese preset.</li>
+          <li><b>CT/PT</b> alterna cifrado / claro · <b>MODE</b> cambia de modo · <b>ZERO</b> borra todas las claves.</li>
+          <li>Teclado del ordenador: dígitos, punto, Intro = ENT, Retroceso/Esc = CLR, flechas, P = PGM, O = OPT, M = MODE, C = CT/PT, +/− = preset, barra espaciadora = PTT.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="assertive"></div>
+
+  <footer class="app-footer">
+    Simulador con fines educativos. No está afiliado a ningún fabricante ni organismo.
+    Todas las claves, frecuencias, estaciones e indicativos son ficticios y no contiene material criptográfico real.
+  </footer>
+
+  <script src="js/core.js"></script>
+  <script src="js/radio.js"></script>
+  <script src="js/skl.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/scenarios.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/ui-skl.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
