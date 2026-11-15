@@ -249,7 +249,12 @@ test('carga KYK-13 (DS-102) desde el SKL; DS-101 comprueba el tipo; peligro de c
   assert.equal(t.radio.keys.ANDVT.TEK[0].tag, SATTAG(t));
   assert.equal(t.radio.keys.ANDVT.TEK[0].proto, 'DS-102');
   assert.equal(SIM.plain(t.radio.display().lines[1]).trim(), 'CHANGE SW FROM LD');
-  // Activate Mode distinto de KYK-13 -> BAD FILL
+  // Activate Mode DS-102 (valor por defecto) también es compatible con FILL DEVICE KYK-13
+  t.radio.setSwitch('PT');
+  t.tick(10);
+  assert.equal(fillKey(t, SAT(t), 'VINSON', 'TEK', 5, { activate: 'DS-102' }), 'DONE');
+  assert.equal(t.radio.keys.VINSON.TEK[4].tag, SATTAG(t));
+  // Activate Mode de otro equipo (KYX-15) -> BAD FILL
   t.radio.setSwitch('PT');
   t.tick(10);
   assert.equal(fillKey(t, SAT(t), 'ANDVT', 'TEK', 2, { activate: 'KYX-15' }), 'BAD');

@@ -105,7 +105,7 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
 .lcd {
   container-type: inline-size; aspect-ratio: 2.7 / 1; border-radius: 4px; overflow: hidden;
   background: var(--lcd-off); color: transparent; box-shadow: inset 0 2px 8px rgba(0,0,0,.55);
-  display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto; row-gap: .6cqw; padding: 1.6cqw 2.4cqw; font-family: "Courier New", Courier, var(--mono);
+  display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto; row-gap: 0; padding: 1.4% 2.2%; font-family: "Courier New", Courier, var(--mono);
 }
 .lcd.on { background: var(--lcd); color: var(--lcd-ink); }
 .lcd.on[data-light="1"] { background: #b6d47c; }
@@ -133,7 +133,7 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
 @keyframes blink { 50% { background: #1a240c; color: #b9d27a; } }
 
 .kdu-keys {
-  display: grid; gap: 7px; grid-template-columns: repeat(6, minmax(0, 1fr));
+  container-type: inline-size; display: grid; gap: 7px; grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-template-areas: "k0 k1 k2 k3 kl kr" "vol k4 k5 k6 clr pre" "vol k7 k8 k9 ent pre";
 }
 .kdu-keys > :nth-child(1) { grid-area: k0; } .kdu-keys > :nth-child(2) { grid-area: k1; } .kdu-keys > :nth-child(3) { grid-area: k2; }
@@ -147,12 +147,12 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
   color: #eef0e2; display: grid; place-items: center; position: relative; padding: 0; touch-action: manipulation; user-select: none;
   box-shadow: 0 2px 0 #0d0f08; min-width: 0;
 }
-.k b { font: 700 clamp(13px, 2.2vw, 19px)/1 Arial, sans-serif; margin-top: -6px; }
-.k sup { position: absolute; top: 18%; right: 14%; font: 700 7px Arial, sans-serif; color: #d9dcc6; }
-.k small { position: absolute; bottom: 14%; font: 700 7.5px Arial, sans-serif; color: #f2e3a6; letter-spacing: .3px; }
+.k b { font: 700 clamp(12px, 4.3cqw, 20px)/1 Arial, sans-serif; margin-top: -2cqw; }
+.k sup { position: absolute; top: 8%; right: 12%; font: 700 clamp(6px, 1.75cqw, 8px)/1 Arial, sans-serif; color: #d9dcc6; }
+.k small { position: absolute; bottom: 13%; font: 700 clamp(6.5px, 1.9cqw, 8.5px)/1 Arial, sans-serif; color: #f2e3a6; letter-spacing: .3px; }
 .k small.fn { font-size: 10px; color: #f2f2e8; }
-.k.word b { font-size: clamp(10px, 1.6vw, 13px); margin-top: 0; }
-.k.arr b { font-size: clamp(12px, 2vw, 16px); margin-top: 0; }
+.k.word b { font-size: clamp(10px, 3.2cqw, 14px); margin-top: 0; }
+.k.arr b { font-size: clamp(12px, 3.8cqw, 17px); margin-top: 0; }
 .k:active, .k.pressed { transform: translateY(2px); box-shadow: none; }
 .rock { display: flex; flex-direction: column; align-items: stretch; border: 2px solid #9aa08a; border-radius: 999px; overflow: hidden; background: #2a2d22; }
 .rock button { flex: 1; background: transparent; border: 0; color: #eef0e2; font: 700 16px Arial, sans-serif; touch-action: manipulation; }
@@ -160,20 +160,20 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
 .rock span { text-align: center; font: 700 10px Arial, sans-serif; color: #eef0e2; }
 .kdu-name { text-align: center; font: italic 700 10px Arial, sans-serif; color: #b9bfa2; letter-spacing: 2px; }
 
-.fswitch { --angle: -45deg; position: relative; width: 112px; height: 112px; }
-.fs-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+.fswitch { --angle: -70deg; position: relative; width: 150px; height: 142px; flex: none; }
+.fs-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #4a4a44, #141412 70%); border: 2px solid #0b0b0a; box-shadow: 0 3px 6px rgba(0,0,0,.6);
   transform: rotate(var(--angle)); transition: transform .25s ease; }
-.fs-ptr { position: absolute; left: 50%; top: 3px; width: 4px; height: 18px; margin-left: -2px; background: #f2f2e8; border-radius: 2px; }
-.fs-pos { --a: 0deg; position: absolute; left: 50%; top: 50%; width: 38px; height: 18px; margin: -9px 0 0 -19px;
-  transform: rotate(var(--a)) translateY(-44px) rotate(calc(-1 * var(--a)));
-  background: transparent; border: 0; color: #f0f2e2; font: 700 10px/16px Arial, sans-serif; padding: 0; border-radius: 3px; }
-.fs-pos.boxed span, .fs-pos.boxed { outline: 1px solid rgba(240,242,226,.7); outline-offset: -2px; }
+.fs-ptr { position: absolute; left: 50%; top: 3px; width: 4px; height: 19px; margin-left: -2px; background: #f2f2e8; border-radius: 2px; }
+.fs-pos { --a: 0deg; --w: 22px; position: absolute; left: 50%; top: 50%; width: var(--w); height: 16px; margin: -8px 0 0 calc(var(--w) / -2);
+  transform: rotate(var(--a)) translateY(-54px) rotate(calc(-1 * var(--a)));
+  background: transparent; border: 0; color: #f0f2e2; font: 700 10px/16px Arial, sans-serif; padding: 0; border-radius: 3px; white-space: nowrap; }
+.fs-pos.boxed { outline: 1px solid rgba(240,242,226,.7); outline-offset: -1px; }
 .fs-pos:hover { background: rgba(0,0,0,.3); }
 .fs-pos.active { color: var(--accent); background: rgba(0,0,0,.35); }
-.fs-pos[data-sw="OFF"] { --a: -45deg; } .fs-pos[data-sw="PT"] { --a: 0deg; } .fs-pos[data-sw="CT"] { --a: 38deg; }
-.fs-pos[data-sw="TD"] { --a: 68deg; } .fs-pos[data-sw="RV"] { --a: 98deg; } .fs-pos[data-sw="LD"] { --a: 130deg; }
-.fs-pos[data-sw="ZALL"] { --a: 180deg; width: 42px; margin-left: -21px; } .fs-pos[data-sw="CLR"] { --a: 225deg; }
+.fs-pos[data-sw="OFF"] { --a: -70deg; --w: 26px; } .fs-pos[data-sw="PT"] { --a: -35deg; } .fs-pos[data-sw="CT"] { --a: 0deg; }
+.fs-pos[data-sw="TD"] { --a: 35deg; } .fs-pos[data-sw="RV"] { --a: 70deg; } .fs-pos[data-sw="LD"] { --a: 105deg; }
+.fs-pos[data-sw="ZALL"] { --a: 152deg; --w: 38px; } .fs-pos[data-sw="CLR"] { --a: 208deg; --w: 30px; }
 .rt-bat { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .rt-bat i { width: 70px; height: 9px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; display: inline-block; }
 .rt-bat i b { display: block; height: 100%; background: var(--ok); }

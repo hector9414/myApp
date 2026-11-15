@@ -255,7 +255,7 @@
           <label class="lbl inline">Seconds:<input name="seconds" value="${esc(v.seconds)}"${P === 'DS-101' && v.wakeup ? '' : ' disabled'}></label>
           <span></span><label class="lbl">Mode:${sel('mode', ['Fill', 'Issue'], v.mode, P === 'DS-102')}</label>
           <span></span><label class="lbl">Timeout:${sel('timeout', ['Slow', 'Medium', 'Fast'], v.timeout, P === 'DS-102')}</label>
-          </div>${opts.hints ? '<p class="ce-hint">AN/PRC-117F con FILL DEVICE KYK-13: Protocol DS-102 y Activate Mode KYK-13.</p>' : ''}`,
+          </div>${opts.hints ? '<p class="ce-hint">AN/PRC-117F con FILL DEVICE KYK-13: Protocol DS-102 y Activate Mode DS-102 o KYK-13.</p>' : ''}`,
         `<span class="grow"></span>${B('OK', { def: true })}${B('Cancel')}<span class="grow"></span>`, { sub: 'Key Load Settings', full: true, type: 'KEY_SETTINGS' });
       }
       case 'READY': {

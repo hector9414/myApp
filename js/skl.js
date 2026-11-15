@@ -960,7 +960,8 @@
         return { ok: false, reason };
       };
       if (st.protocol !== want) return fail(`la radio (FILL DEVICE ${req.device}) espera ${want} y el SKL emula ${st.protocol}.`, 'No response from equipment.');
-      if (want === 'DS-102' && st.activate !== 'KYK-13') return fail(`con FILL DEVICE KYK-13 el Activate Mode del SKL debe ser KYK-13 (está en ${st.activate}).`, 'No response from equipment.');
+      // DS-102 y KYK-13 son el mismo interfaz de llenado DS-102 (modo KYK-13 de la radio).
+      if (want === 'DS-102' && !['DS-102', 'KYK-13'].includes(st.activate)) return fail(`con FILL DEVICE KYK-13 el Activate Mode del SKL debe ser DS-102 o KYK-13 (está en ${st.activate}).`, 'No response from equipment.');
       const key = this.currentSendKey();
       key.issued++;
       s.stage = 'SENT';

@@ -145,7 +145,7 @@ Cada ejercicio muestra sus pasos y comprueba los objetivos en vivo.
 1. **SKL** (CIK ya insertado): encender, Logon `OPERADOR` / `Operador1`, OK en Startup Information. La UAS se abre sola.
 2. **Radio**: interruptor en **LD**. Solo entonces conectar el SKL a **J1** (antes, retirar el H-250).
 3. **Radio**: `FILL DEVICE` KYK-13 > `CRYPTO TYPE` ANDVT > `SELECT KEY TYPE` TEK > `KEY NUMBER` 01 > «PRESS ENTER TO INITIATE».
-4. **SKL**: File > Transmit > **Load Selected Keys…** > marcar el segmento del mes en curso de `ETD 01 5AT900` > OK > Key Load Settings: Protocol **DS-102**, Activate Mode **KYK-13** > OK > OK en «Ready to Send Key».
+4. **SKL**: File > Transmit > **Load Selected Keys…** > marcar el segmento del mes en curso de `ETD 01 5AT900` > OK > Key Load Settings: Protocol **DS-102**, Activate Mode **DS-102** o **KYK-13** > OK > OK en «Ready to Send Key».
 5. Con la ventana Status en «Press INITIATE Button....», pulsar **ENT** en la radio. Esperar «FILL DONE» en la radio y «Operation Successful.» en el SKL.
 6. «MORE FILL DATA?»: YES para cargar otra clave o NO para terminar.
 7. «CHANGE SW FROM LD»: **desconectar primero el SKL**, luego girar a CT.

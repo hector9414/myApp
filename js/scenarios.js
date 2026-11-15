@@ -76,7 +76,7 @@
         'Radio: gire el interruptor a LD. SOLO ENTONCES conecte el SKL a J1 (antes, retire el microteléfono).',
         'Radio: FILL DEVICE = KYK-13, CRYPTO TYPE = ANDVT, SELECT KEY TYPE = TEK, KEY NUMBER = 01. Verá «PRESS ENTER TO INITIATE».',
         `SKL: File > Transmit > Load Selected Keys > marque el segmento del mes (${new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase()} TEK) > OK.`,
-        'Key Load Settings: Protocol DS-102, Activate Mode KYK-13 > OK. «Ready to Send Key» (Connect to Receive Equipment) > OK.',
+        'Key Load Settings: Protocol DS-102, Activate Mode DS-102 o KYK-13 > OK. «Ready to Send Key» (Connect to Receive Equipment) > OK.',
         'Con la ventana Status en «Press INITIATE Button....», pulse ENT en la radio. Espere «FILL DONE» en la radio y «Operation Successful.» en el SKL.',
         'Radio: pulse una tecla, MORE FILL DATA? NO. «CHANGE SW FROM LD»: desconecte primero el SKL de J1 y después gire el interruptor a CT.',
       ],

@@ -77,7 +77,7 @@
 
   // ------------------------------------------------------------------ radio
   // Ángulos del interruptor como en el manual: OFF arriba-izq., PT arriba, ..., Z-ALL abajo, CLR abajo-izq.
-  const SW_ANGLE = { OFF: -45, PT: 0, CT: 38, TD: 68, RV: 98, LD: 130, ZALL: 180, CLR: 225 };
+  const SW_ANGLE = { OFF: -70, PT: -35, CT: 0, TD: 35, RV: 70, LD: 105, ZALL: 152, CLR: 208 };
   const escHtml = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const lcdHtml = (t) => escHtml(t).replace(/\u0001/g, '<span class="blink">').replace(/\u0002/g, '</span>');
   const row3 = (r, cls) => (r ? `<div class="${cls}"><span class="l">${lcdHtml(r.l)}</span><span class="c">${lcdHtml(r.c)}</span><span class="r">${lcdHtml(r.r)}</span></div>` : `<div class="${cls}"></div>`);

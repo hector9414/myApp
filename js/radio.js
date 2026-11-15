@@ -1236,7 +1236,7 @@
           return this.changed();
         }
         tries++;
-        if (!r.wait || tries > 16) {
+        if (!r.wait || tries > 60) {
           s.stage = 'BAD';
           this.emit('fill', { ok: false, req, reason: r.reason || 'Sin respuesta del dispositivo de llenado' });
           return this.changed();
