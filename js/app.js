@@ -4,7 +4,7 @@
   const SIM = window.SIM;
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
-  const STORE = 'sim-prc117f-skl-v2';
+  const STORE = 'sim-prc117f-skl-v3';
 
   const DEFAULT_CONN = { j1: 'NONE', j5: false, j8: 'NONE', az: 0, el: 0, cik: false };
   const conn = Object.assign({}, DEFAULT_CONN);
@@ -76,31 +76,58 @@
   const hint = (text) => prefs.hints && addLog({ dir: 'HINT', text });
 
   // ------------------------------------------------------------------ radio
-  const lcdLines = $$('#radio-lcd .lcd-line');
-  const SW_ANGLE = { CLR: -140, ZALL: -100, OFF: -60, PT: -20, CT: 20, TD: 60, RV: 100, LD: 140 };
-  const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const lcdHtml = (line) => escHtml(line).replace(/\u0001/g, '<span class="blink">').replace(/\u0002/g, '</span>');
+  // Ángulos del interruptor como en el manual: OFF arriba-izq., PT arriba, ..., Z-ALL abajo, CLR abajo-izq.
+  const SW_ANGLE = { OFF: -45, PT: 0, CT: 38, TD: 68, RV: 98, LD: 130, ZALL: 180, CLR: 225 };
+  const escHtml = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const lcdHtml = (t) => escHtml(t).replace(/\u0001/g, '<span class="blink">').replace(/\u0002/g, '</span>');
+  const row3 = (r, cls) => (r ? `<div class="${cls}"><span class="l">${lcdHtml(r.l)}</span><span class="c">${lcdHtml(r.c)}</span><span class="r">${lcdHtml(r.r)}</span></div>` : `<div class="${cls}"></div>`);
 
+  /** Dibuja la pantalla gráfica del KDU a partir de la descripción del modelo. */
+  function lcdMarkup(d) {
+    if (!d.lit) return '';
+    let status = '<div class="lcd-st"></div>';
+    if (d.status && d.status.title !== undefined) {
+      status = `<div class="lcd-st"><span class="st-l">${lcdHtml(d.status.title)}</span><span class="st-r">${escHtml(d.status.sw)}</span></div>`;
+    } else if (d.status) {
+      const st = d.status;
+      status = `<div class="lcd-st"><span class="st-l"><b class="rti">${st.rt}</b> BAT <i class="lbat"><b style="width:${st.bat}%"></b></i> ${escHtml(st.mode)} ${escHtml(st.crypto)}</span><span class="st-r">${escHtml(st.sw)}</span></div>`;
+    }
+    const icons = d.icons ? `<span class="lcd-ic"><i class="cyc">⟳</i><i class="meter"><b style="width:${Math.round(d.meter * 100)}%"></b></i></span>` : '';
+    const r0 = d.rows[0] || {};
+    const big1 = `<div class="lcd-big">${row3(r0, 'cols')}${icons}</div>`;
+    let rest;
+    if (d.grid) {
+      rest = `<div class="lcd-grid" style="--n:${d.grid.length}">${d.grid.map((g) => `<div><b>${lcdHtml(g[0])}</b><small>${lcdHtml(g[1])}</small></div>`).join('')}</div>`;
+    } else {
+      rest = `<div class="lcd-big">${row3(d.rows[1], 'cols')}</div>${row3(d.foot, 'lcd-foot cols')}`;
+    }
+    return status + big1 + rest;
+  }
+
+  let lastLcd = '';
   function renderRadio() {
     const d = radio.display();
-    lcdLines.forEach((el, i) => {
-      const html = lcdHtml(d.lines[i]);
-      if (el.innerHTML !== html) el.innerHTML = html;
-    });
     const lcd = $('#radio-lcd');
+    const html = lcdMarkup(d);
+    if (html !== lastLcd) {
+      lastLcd = html;
+      lcd.innerHTML = html;
+    }
     lcd.classList.toggle('on', d.lit);
     lcd.dataset.light = d.lit ? String(d.light || 0) : '0';
+    lcd.setAttribute('aria-label', d.text.filter(Boolean).map(SIM.plain).join('. '));
     $('#func-switch').style.setProperty('--angle', SW_ANGLE[radio.sw] + 'deg');
-    $$('.knob-pos').forEach((b) => {
+    $$('.fs-pos').forEach((b) => {
       b.classList.toggle('active', b.dataset.sw === radio.sw);
       b.setAttribute('aria-pressed', String(b.dataset.sw === radio.sw));
     });
     const bat = Math.ceil(radio.battery);
-    $('#bat-meter i').style.width = (d.lit ? bat : 0) + '%';
+    $('#bat-meter b').style.width = bat + '%';
     $('#bat-meter').classList.toggle('low', bat <= 15);
     $('#bat-bar').style.width = bat + '%';
     $('#bat-bar').className = bat <= 15 ? 'low' : '';
     $('#bat-text').textContent = bat + ' %';
+    $('#bat-text2').textContent = bat + ' %';
     SIM.audio.volume = radio.volume / 8;
     $('#ptt').classList.toggle('tx', radio.tx);
   }
@@ -115,10 +142,11 @@
     $('#pointing').disabled = conn.j8 !== 'SATCOM';
     $('#port-j1').classList.toggle('connected', conn.j1 !== 'NONE');
     $('#port-j1').classList.toggle('fill', conn.j1 === 'SKL');
-    $('#j1-what').textContent = { NONE: '—', HANDSET: 'H-250', SKL: 'SKL' }[conn.j1];
+    $('#j1-what').textContent = { NONE: '', HANDSET: 'H-250', SKL: 'SKL' }[conn.j1];
     $('#port-j5').classList.toggle('connected', conn.j5);
+    $('#j5-what').textContent = conn.j5 ? 'PALA VHF' : '';
     $('#port-j8').classList.toggle('connected', conn.j8 !== 'NONE');
-    $('#j8-what').textContent = { NONE: '—', FLEX: 'FLEX', SATCOM: 'SATCOM' }[conn.j8];
+    $('#j8-what').textContent = { NONE: '', FLEX: 'FLEX VHF/UHF', SATCOM: 'SATCOM' }[conn.j8];
     $('#skl-fill').classList.toggle('connected', conn.j1 === 'SKL');
     $('#cik-slot').classList.toggle('connected', conn.cik);
     $('#handset').classList.toggle('disconnected', conn.j1 !== 'HANDSET');
@@ -128,22 +156,41 @@
 
   // ------------------------------------------------------------------ SKL
   let lastSkl = '';
+  let lastDlgKey = '';
   function renderSKL() {
     const el = $('#skl-screen');
     el.className = 'skl-screen' + (skl.power ? ' on' : '');
     const html = SIM.renderSKL(skl, { hints: prefs.hints });
     if (html !== lastSkl) {
+      // conserva lo tecleado en los campos del diálogo abierto
+      const dlgKey = skl.dlg ? skl.dlg.type + ':' + skl.dialogs.length : '';
+      const saved = {};
+      if (dlgKey && dlgKey === lastDlgKey) el.querySelectorAll('.ce-dlg input').forEach((i) => { saved[i.name + ':' + i.type + ':' + i.value] = i.type === 'checkbox' || i.type === 'radio' ? i.checked : i.value; });
+      const savedText = {};
+      if (dlgKey && dlgKey === lastDlgKey) el.querySelectorAll('.ce-dlg input[type="text"], .ce-dlg input[type="password"]').forEach((i) => { savedText[i.name] = i.value; });
+      const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.name : null;
       lastSkl = html;
       el.innerHTML = html;
-      const user = el.querySelector('input[name="user"]');
-      if (user) user.focus({ preventScroll: true });
+      if (dlgKey && dlgKey === lastDlgKey) {
+        el.querySelectorAll('.ce-dlg input').forEach((i) => {
+          if (i.type === 'checkbox' || i.type === 'radio') {
+            const k = i.name + ':' + i.type + ':' + i.value;
+            if (k in saved) i.checked = saved[k];
+          } else if (i.name in savedText) i.value = savedText[i.name];
+        });
+        if (focused) {
+          const f = el.querySelector(`.ce-dlg [name="${CSS.escape(focused)}"]`);
+          if (f) f.focus({ preventScroll: true });
+        }
+      } else {
+        const first = el.querySelector('.ce-dlg input:not([readonly])');
+        if (first) first.focus({ preventScroll: true });
+      }
+      lastDlgKey = dlgKey;
     }
     $('#skl-kov').className = 'kov ' + (skl.kov === 'GREEN' ? 'green' : '');
     const b = Math.ceil(skl.battery);
     const col = b > 40 ? 'g' : b > 10 ? 'a' : 'r';
-    $('#skl-bat').className = 'skl-bat ' + (skl.power ? col : 'off');
-    $('#skl-bat i').style.setProperty('--w', b + '%');
-    $('#skl-bat b').textContent = skl.power ? b + ' %' : '';
     $('#skl-bat-bar').style.width = b + '%';
     $('#skl-bat-bar').className = col === 'r' ? 'low' : col === 'a' ? 'mid' : '';
     $('#skl-bat-text').textContent = b + ' %';
@@ -257,7 +304,7 @@
     radio.press(b.dataset.key);
   });
 
-  $$('.knob-pos').forEach((b) => b.addEventListener('click', () => {
+  $$('.fs-pos').forEach((b) => b.addEventListener('click', () => {
     SIM.audio.unlock();
     const pos = b.dataset.sw;
     if (pos === 'ZALL' && !window.confirm('Z-ALL: se borrarán todas las claves COMSEC y los datos de salto (TRANSEC). La programación se conserva.\n\n¿Continuar?')) return;
@@ -338,19 +385,64 @@
   $('#skl-power').addEventListener('click', () => { SIM.audio.unlock(); skl.powerButton(); });
   $('#skl-zero').addEventListener('click', () => {
     if (!skl.power) return toast('El SKL está apagado.', 'warn');
-    if (window.confirm('ZEROIZE del SKL: se borrarán TODAS las claves y loadsets.\n\n¿Continuar?')) skl.zeroize();
+    if (window.confirm('ZEROIZE del SKL: se borrarán TODAS las claves y la tarjeta KOV-21 quedará sin inicializar.\n\n¿Continuar?')) skl.zeroize();
   });
-  $('#skl-screen').addEventListener('click', (e) => {
+  /** Recoge los campos del diálogo abierto (texto, contraseñas, radios, casillas y listas). */
+  function dialogFields(form) {
+    const f = {};
+    if (!form) return f;
+    form.querySelectorAll('input, select').forEach((i) => {
+      if (!i.name) return;
+      if (i.type === 'checkbox') {
+        if (i.name === 'keys') {
+          f.keys = f.keys || [];
+          if (i.checked) f.keys.push(i.value);
+        } else f[i.name] = i.checked;
+      } else if (i.type === 'radio') {
+        if (i.checked) f[i.name] = i.value;
+      } else f[i.name] = i.value;
+    });
+    return f;
+  }
+  const sklScreen = $('#skl-screen');
+  sklScreen.addEventListener('click', (e) => {
+    const db = e.target.closest('[data-dlg-btn]');
+    if (db) {
+      SIM.audio.beep(2400, 25);
+      if (db.dataset.dlgBtn === 'Clear') {
+        db.closest('form').querySelectorAll('input:not([readonly])').forEach((i) => { i.value = ''; });
+        return;
+      }
+      skl.act('dlg', { btn: db.dataset.dlgBtn, fields: dialogFields(db.closest('form')) });
+      return;
+    }
     const b = e.target.closest('[data-act]');
-    if (!b) return;
-    SIM.audio.beep(2400, 25);
+    if (!b) {
+      if (skl.menu || skl.startMenu || skl.switcher) skl.act('menuClose');
+      return;
+    }
+    if (b.tagName === 'INPUT') return;
+    e.stopPropagation();
+    SIM.audio.beep(2400, 15);
     skl.act(b.dataset.act, b.dataset.arg);
   });
-  $('#skl-screen').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const f = e.target;
-    if (f.dataset.form === 'login') skl.act('login', { user: f.user.value, pass: f.pass.value });
+  sklScreen.addEventListener('dblclick', (e) => {
+    const n = e.target.closest('[data-node]');
+    if (n) skl.act('open', n.dataset.node);
   });
+  sklScreen.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const form = e.target.closest('.ce-dlg');
+    if (!form) return;
+    e.preventDefault();
+    const def = form.querySelector('.ce-btn.def[data-dlg-btn]');
+    if (def) def.click();
+  });
+  $$('[data-hw]').forEach((b) => b.addEventListener('click', () => {
+    SIM.audio.unlock();
+    skl.act('hw', b.dataset.hw);
+    if (b.dataset.hw === '4') toast('Botón 4: activa la cruceta (modo ratón).');
+  }));
 
   // ------------------------------------------------------------------ conexiones
   $$('input[name="j1"]').forEach((r) => r.addEventListener('change', () => {
@@ -362,6 +454,25 @@
     save();
   }));
   $$('input[name="j8"]').forEach((r) => r.addEventListener('change', () => { conn.j8 = r.value; renderAll(); save(); }));
+  // Conectores del panel frontal: al pulsarlos se cambia lo que hay conectado
+  $$('[data-port]').forEach((b) => b.addEventListener('click', () => {
+    const p = b.dataset.port;
+    if (p === 'j1') {
+      const prev = conn.j1;
+      conn.j1 = { NONE: 'HANDSET', HANDSET: 'SKL', SKL: 'NONE' }[conn.j1];
+      if (prev === 'HANDSET') pttStop();
+      if (conn.j1 === 'SKL') checkFillHazard();
+      toast(`J1: ${{ NONE: 'desconectado', HANDSET: 'microteléfono H-250', SKL: 'SKL (cable de llenado)' }[conn.j1]}.`);
+    } else if (p === 'j5') {
+      conn.j5 = !conn.j5;
+      toast(`J5: ${conn.j5 ? 'antena de pala VHF conectada' : 'sin antena'}.`);
+    } else {
+      conn.j8 = { NONE: 'FLEX', FLEX: 'SATCOM', SATCOM: 'NONE' }[conn.j8];
+      toast(`J8: ${{ NONE: 'sin antena', FLEX: 'antena flexible VHF/UHF', SATCOM: 'antena SATCOM' }[conn.j8]}.`);
+    }
+    renderAll();
+    save();
+  }));
   $('#conn-j5').addEventListener('change', (e) => { conn.j5 = e.target.checked; renderAll(); save(); });
   const clampIn = (el, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(el.value) || 0)));
   $('#conn-az').addEventListener('change', (e) => { conn.az = clampIn(e.target, 0, 359); renderAll(); save(); });

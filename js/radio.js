@@ -18,7 +18,7 @@
 (function (g) {
   'use strict';
   const SIM = g.SIM;
-  const { pad, fit, lr, blink } = SIM;
+  const { pad, blink } = SIM;
 
   const W = 22;
   const SW = ['CLR', 'ZALL', 'OFF', 'PT', 'CT', 'TD', 'RV', 'LD'];
@@ -44,8 +44,6 @@
   const PRECEDENCE = ['ROUTINE', 'PRIORITY', 'IMMEDIATE', 'FLASH', 'FLASH OVERRIDE', 'EMERGENCY ACTION'];
 
   const r5 = (v) => Math.round(v * 1e5) / 1e5;
-  /** Columnas alineadas con «TYPE ADF DATA MODE SQL». */
-  const cols = (a, b, c, d, e) => a.padEnd(5) + b.padEnd(4) + c.padEnd(5) + d.padEnd(5) + e;
   const f5 = (v) => r5(v).toFixed(5).padStart(9, '0'); // 035.10000
 
   /**
@@ -227,6 +225,7 @@
       this.changed();
     }
     go(screen) {
+      if (screen.ctx === undefined && this.screen && this.screen.ctx) screen.ctx = this.screen.ctx;
       this.stack.push(this.screen);
       this.screen = screen;
       if (screen.id === 'WIZ') this.initEdit();
@@ -587,7 +586,10 @@
 
     // ================================================================ menús «USE < > TO SELECT ITEM»
     menu(title, items, extra) {
-      return Object.assign({ id: 'MENU', title, items, idx: 0 }, extra || {});
+      const m = Object.assign({ id: 'MENU', title, items, idx: 0 }, extra || {});
+      const named = /^\d+-(.+)$/.exec(title); // «0-DAMANET0»: el nombre se ve abajo a la izquierda
+      if (m.ctx === undefined && named) m.ctx = named[1];
+      return m;
     }
     key_MENU(k) {
       const s = this.screen;
@@ -631,7 +633,7 @@
 
     programNet(i) {
       const n = this.nets[i];
-      this.go(this.wizard(`NET ${pad(i)}`, [
+      this.go(Object.assign(this.wizard(`NET ${pad(i)}`, [
         this.f.choice('ACTIVATE IN LIST?', () => (n.active ? 'YES' : 'NO'), (v) => { n.active = v === 'YES'; }, () => ['YES', 'NO']),
         this.f.choice('NET TYPE', () => ({ LOS: 'LOS FIX FREQUENCY', SAT: 'SATCOM', HOP: 'FREQUENCY HOPPING' }[n.type]), (v) => {
           const t = { 'LOS FIX FREQUENCY': 'LOS', SATCOM: 'SAT', 'FREQUENCY HOPPING': 'HOP' }[v];
@@ -642,7 +644,7 @@
           if (v === 'HAVEQUICK' && n.crypto === 'KYV-5') n.crypto = 'NONE';
           n.power = Math.min(n.power, 10);
         }, () => ['SINCGARS', 'HAVEQUICK']), { skip: () => n.type !== 'HOP' }),
-      ], () => this.go(this.menuNet(i))));
+      ], () => this.go(this.menuNet(i))), { ctx: n.name }));
     }
 
     changeNetType(n, t) {
@@ -693,7 +695,7 @@
           { label: 'NAME', run: () => this.go(this.wizard('NAME', [this.nameField(n, this.nets)])) },
         ];
       };
-      return this.menu(`NET ${pad(i)} ${n.name}`, items);
+      return this.menu(`NET ${pad(i)} ${n.name}`, items, { ctx: n.name });
     }
 
     freqField(label, get, set, lo, hi) {
@@ -827,8 +829,10 @@
 
     menuOPT() {
       const n = this.net;
+      // Orden de la pantalla del manual: COMSEC POWER RETRANS / TIME GPS SAVE
       return this.menu('OPT', [
         { label: 'COMSEC', run: () => (this.mode === 'DAMA' ? this.flash('USE PGM DAMA') : this.go(this.wizard('COMSEC', this.comsecFields(n)))) },
+        { label: 'POWER', run: () => (this.mode === 'DAMA' ? this.flash('USE PGM DAMA') : this.go(this.wizard('POWER', this.pwrFields(n)))) },
         { label: 'RETRANS' },
         { label: 'TIME', run: () => this.go(this.menu('TIME', [
           { label: 'SINCGARS', run: () => this.go(this.todWizard('SINCGARS')) },
@@ -837,8 +841,7 @@
         ])) },
         { label: 'GPS' },
         { label: 'SAVE' },
-        { label: 'POWER', run: () => (this.mode === 'DAMA' ? this.flash('USE PGM DAMA') : this.go(this.wizard('POWER', this.pwrFields(n)))) },
-      ]);
+      ], { ctx: this.mode === 'DAMA' ? '' : n.name });
     }
 
     todWizard(kind) {
@@ -1426,180 +1429,222 @@
     }
 
     // ================================================================ pantalla
+    /*
+     * Cada vista devuelve una descripción de la pantalla gráfica del KDU:
+     *   status: línea pequeña superior { crypto, mode } (R/T, batería y PT/CT se añaden siempre)
+     *           o { title } en pantallas de menú/campo (solo se ve el título y PT/CT a la derecha)
+     *   rows:   hasta 2 filas en letra grande { l, c, r }
+     *   grid:   columnas [valor, etiqueta] que sustituyen a la 2.ª fila y al pie
+     *   foot:   línea pequeña inferior { l, c, r }
+     *   icons:  muestra ⟳ y el medidor RX/TX junto a la 1.ª fila
+     */
     swTag() {
       return SW_LABEL[this.sw];
     }
 
-    cryptoLine(crypto, key) {
-      if (crypto === 'NONE') return lr('NONE', this.swTag(), W);
+    cryptoText(crypto, key) {
+      if (crypto === 'NONE') return '';
       const bank = BANK_OF[crypto];
       const has = bank && this.keys[bank].TEK[key - 1];
-      return lr(`${crypto} ${has ? 'TEK' + pad(key) : 'NO KEY'}`, this.swTag(), W);
+      return `${crypto.replace('-', '')} ${has ? 'TEK' + pad(key) : 'NO KEY'}`;
     }
 
     view_MAIN() {
-      const rt = this.tx ? 'T' : this.rx ? 'R' : ' ';
-      if (this.mode === 'DAMA') return this.viewDama(rt);
+      if (this.mode === 'DAMA') return this.viewDama();
       const n = this.net;
-      const l1 = lr(`${rt} ${pad(this.cur)}*${n.name}`, 'NORM', W);
-      const l2 = this.cryptoLine(n.crypto, n.key);
+      const name = `${pad(this.cur)}-${n.name}`;
+      const status = { mode: 'NORM', crypto: this.cryptoText(n.crypto, n.key) };
+      const sqS = { TONE: 'TONE', NOISE: 'NOISE', OFF: 'OFF' };
+      const rate = n.crypto === 'NONE' ? 'ANLG' : n.crypto === 'ANDVT' ? '2.4' : '16.0';
       const pages = [];
-      const sqS = { TONE: 'TON', NOISE: 'NOI', OFF: 'OFF' };
       if (n.type === 'LOS') {
-        pages.push([cols('LOS', 'VOC', 'OFF', n.mod, sqS[n.sq]), 'TYPE ADF DATA MODE SQL']);
-        pages.push([`R:${f5(n.rx)}  ${n.crypto === 'NONE' ? 'ANLG' : '16K'}`, `T:${f5(n.tx)}  ${String(n.power).padStart(4)}W`]);
+        pages.push({ rows: [{ l: name }], grid: [['LOS', 'TYPE'], ['VOC', 'ADF'], ['VOC', 'DATA'], [n.mod, 'MODE'], [sqS[n.sq], 'SQL']] });
+        pages.push({ rows: [{ l: `R:${f5(n.rx)}`, r: 'LOS' }, { l: `T:${f5(n.tx)}`, r: rate }], foot: { l: 'FREQUENCY', r: 'RATE' } });
       } else if (n.type === 'SAT') {
         const sf = satFreqs(n);
-        pages.push([cols('SAT', 'VOC', 'OFF', '181', n.dsq === 'ON' ? 'DIG' : 'OFF'), 'TYPE ADF DATA MODE SQL']);
-        pages.push([`R:${f5(sf.rx)} ${n.crypto === 'VINSON' ? '16K' : '2.4K'}`, `T:${f5(sf.tx)}   ${pad(n.code, 3)}`]);
+        pages.push({ rows: [{ l: name }], grid: [['SAT', 'TYPE'], ['VOC', 'ADF'], ['VOC', 'DATA'], ['181', 'MODE'], [n.dsq === 'ON' ? 'DIG' : 'OFF', 'SQL']] });
+        pages.push({ rows: [{ l: `R:${f5(sf.rx)}`, r: 'SAT' }, { l: `T:${f5(sf.tx)}`, r: rate }], foot: { l: 'FREQUENCY', c: 'RATE', r: pad(n.code, 3) } });
         const voc = n.crypto === 'ANDVT' ? n.voice : n.crypto === 'VINSON' ? 'CVSD' : 'NONE';
-        pages.push([`${satBw(n)}KHZ ${voc} FSK ${n.crypto === 'VINSON' ? '132' : n.opt}`, 'BW   VOC  MOD OPT']);
+        pages.push({ rows: [{ l: name }], grid: [[`${satBw(n)}K`, 'BW'], [voc, 'VOC'], ['FSK', 'MOD'], [n.crypto === 'VINSON' ? '132' : n.opt, 'OPT'], ['NONE', 'INTERLV']] });
       } else if (n.hop === 'SINCGARS') {
         const t = this.keys.SINCGARS.TSK[n.hopset - 1];
-        const st = !t ? 'EMP' : !this.todSinc ? 'ERR' : 'OK ';
-        pages.push([cols('SINC', 'VOC', 'OFF', t ? 'F' + pad(t.netId, 3) : '----', st), 'TYPE ADF DATA NET  ST']);
-        pages.push([`HOPSET ${pad(n.hopset)} ${t ? 'F' + pad(t.netId, 3) : 'EMPTY'}`, `TOD ${this.todSinc ? 'OK' : '--'}  ${String(n.power).padStart(4)}W`]);
+        const st = !t ? 'EMPTY' : !this.todSinc ? 'ERR' : 'OK';
+        pages.push({ rows: [{ l: name }], grid: [['SINC', 'TYPE'], ['VOC', 'ADF'], ['VOC', 'DATA'], [t ? 'F' + pad(t.netId, 3) : '----', 'NET'], [st, 'FH']] });
+        pages.push({ rows: [{ l: `HOPSET ${pad(n.hopset)}`, r: t ? 'F' + pad(t.netId, 3) : 'EMPTY' }, { l: `TOD ${this.todSinc ? 'OK' : '--'}`, r: `${n.power}W` }], foot: { l: 'COMPARTMENT', r: 'NET ID' } });
       } else {
         const wod = this.keys.HAVEQUICK.WOD[new Date(this.env.now()).getUTCDate() - 1];
         const st = !this.todHQ || !wod ? 'ERR' : 'OK';
-        pages.push([cols('HVQK', 'VOC', 'OFF', 'AM', st), 'TYPE ADF DATA MODE ST']);
-        pages.push([`NET ${n.hqNet}  ${String(n.power).padStart(4)}W`, `TOD ${this.todHQ ? 'OK' : '--'} MWOD ${wod ? 'OK' : '--'}`]);
+        pages.push({ rows: [{ l: name }], grid: [['HVQUIK', 'TYPE'], ['VOC', 'ADF'], ['VOC', 'DATA'], ['OFF', 'SQL'], [st, 'FH']] });
+        pages.push({ rows: [{ l: `NET ${n.hqNet}`, r: 'HQII' }, { l: `TOD ${this.todHQ ? 'OK' : '--'}`, r: `MWOD ${wod ? 'OK' : '--'}` }], foot: { l: 'NET NUMBER', r: 'STATUS' } });
       }
-      const p = pages[this.page % pages.length];
-      return [l1, l2, p[0], p[1]];
+      return Object.assign({ status, icons: true }, pages[this.page % pages.length]);
     }
 
-    viewDama(rt) {
+    viewDama() {
       const d = this.damaNets[this.damaCur];
       const c = this.damaCfgs[d.cfg];
       const st = this.dama ? this.dama.status : 'DISABLE';
       const sc = satCode(d.channel);
       const bw = sc && !sc.manual ? sc.bw : 25;
-      const l1 = lr(`${rt} ${this.damaCur}-${d.name}`, 'DAMA', W);
-      const l2 = this.cryptoLine(c.crypto, c.key);
+      const status = { mode: 'DAMA', crypto: this.cryptoText(c.crypto, c.key) };
       const statusText = {
-        CONFIG: 'CONFIGURING', ACQUIRING: 'ACQUIRING', RANGING: 'RANGING IN PROG', 'LOGGING IN': 'LOGGING IN',
+        CONFIG: 'CONFIGURING', ACQUIRING: 'ACQUIRING', RANGING: 'RANGING', 'LOGGING IN': 'LOGGING IN',
         CONNECTED: 'CONNECTED', ERROR: `ERROR ${this.dama && this.dama.err ? this.dama.err : ''}`, DISABLE: 'DISABLE',
       }[st];
+      const name = `${this.damaCur}-${d.name}`;
       const pages = [
-        [lr(statusText, bw === 25 ? '25K-AC' : '5KHZ', W), 'NETWORK'],
-        [`R:${sc && !sc.manual ? sc.rx.toFixed(3) : '---.---'} OW:${d.ow === 'ON' ? 'CT' : 'PT'}`, `T:${sc && !sc.manual ? sc.tx.toFixed(3) : '---.---'} ${d.txCap} ${pad(d.channel, 3)}`],
-        [lr(`${d.cfg}-${c.name}`, '', W), `${this.dama ? this.dama.service : 'IDLE'}  SERVICE`],
-        [`TO: ${this.dama && this.dama.call ? pad(this.dama.call.dest[0] || 0, 5) : '-----'}`, `${c.voice} ${c.crypto === 'ANDVT' ? '2400' : '16K'} CFG ${c.code25}`],
+        { rows: [{ l: name }, { l: statusText, r: bw === 25 ? '25KHZ-AC' : '5KHZ' }], foot: { l: 'NETWORK' } },
+        { rows: [{ l: `R:${sc && !sc.manual ? sc.rx.toFixed(3) : '---.---'}`, r: `OW:${d.ow === 'ON' ? 'CT' : 'PT'}` }, { l: `T:${sc && !sc.manual ? sc.tx.toFixed(3) : '---.---'}`, c: d.txCap, r: pad(d.channel, 3) }], foot: { l: 'FREQUENCY', c: 'TX_OPTS', r: 'CHAN' } },
+        { rows: [{ l: `${d.cfg}-${c.name}` }, { l: this.dama ? this.dama.service : 'IDLE' }], foot: { l: 'SERVICE', r: 'TIME REMAINING' } },
+        { rows: [{ l: `TO: ${this.dama && this.dama.call ? pad(this.dama.call.dest[0] || 0, 5) : '-----'}` }, { l: 'VOC', c: c.crypto === 'ANDVT' ? '2400' : '16K', r: 'SYNC' }], foot: { l: 'ADF', c: 'DATA RATE', r: 'SYNCH' } },
+        { rows: [{ l: this.dama ? this.dama.service : 'IDLE', r: `F:257 ${c.code25}` }, { l: st === 'CONNECTED' ? 'CONNECTED' : statusText, c: c.voice, r: pad(d.channel, 3) }], foot: { l: 'NETWORK', c: 'ENC', r: 'CHAN' } },
       ];
-      const p = pages[this.page % pages.length];
-      return [l1, l2, p[0], p[1]];
+      return Object.assign({ status, icons: true }, pages[this.page % pages.length]);
     }
 
     view_BOOT() {
       const s = this.screen.step;
-      return ['AN/PRC-117F (SIM)', 'POWER-ON SELF TEST', '#'.repeat(s * 5).padEnd(20, '.'), 'ESPERE...'];
+      return { rows: [{ c: 'POWER ON SELF TEST' }, { c: '#'.repeat(s * 5).padEnd(20, '.') }], foot: { c: 'AN/PRC-117F (SIM)' } };
     }
     view_ZALL() {
-      return ['', 'ZEROIZE PASSED', 'RESET RADIO', ''];
+      return { status: { title: '' }, rows: [{ c: 'ZEROIZE PASSED' }, { c: 'RESET RADIO' }] };
     }
     view_NOTICE() {
-      return this.screen.lines.slice();
+      const l = this.screen.lines.filter(Boolean);
+      return { status: { title: '' }, rows: [{ c: l[0] || '' }, { c: l.length > 3 ? l[1] + ' ' + l[2] : l[1] || '' }], foot: { c: l[l.length - 1] || '' } };
     }
     view_RV() {
-      return [lr('RV', 'RV', W), 'RECEIVE VARIABLE', 'OTAR/OTAT', 'NO SIMULADO'];
+      return { status: { title: 'RV' }, rows: [{ c: 'RECEIVE VARIABLE' }, { c: 'OTAR/OTAT' }], foot: { c: 'NO SIMULADO EN EL ENTRENADOR' } };
     }
     view_INFO() {
-      const l = this.screen.lines.slice(0, 4);
-      while (l.length < 4) l.push('');
-      return l;
+      const l = this.screen.lines;
+      return { status: { title: l[0] }, rows: [{ c: l[1] || '' }, { c: l[2] || '' }], foot: { c: l[3] || 'CLR=SALIR' } };
     }
     view_BIT() {
-      if (!this.screen.done) return ['TEST', 'BIT IN PROGRESS', '', ''];
-      return ['TEST', this.bitResult.pass ? 'BIT PASSED' : 'BIT FAILED', this.bitResult.pass ? 'HUB OK' : 'BATERIA BAJA', 'CLR=SALIR'];
+      if (!this.screen.done) return { status: { title: 'TEST' }, rows: [{ c: 'BIT IN PROGRESS' }, { c: '' }] };
+      return { status: { title: 'TEST' }, rows: [{ c: this.bitResult.pass ? 'BIT PASSED' : 'BIT FAILED' }, { c: this.bitResult.pass ? 'HUB OK' : 'LOW BATTERY' }], foot: { c: 'PRESS CLR' } };
     }
     view_RSSI() {
       const s = this.screen;
       const n = this.net;
-      const l1 = lr(`${n.crypto} TEK${pad(n.key)}`, this.swTag(), W);
-      if (s.stage === 0) return [l1, 'PRESS ENT', 'RSSI', 'CLR=SALIR'];
-      if (s.stage === 1) return [l1, 'RSSI TEST', 'PINGING SATELLITE...', ''];
-      return [l1, `RSSI SCORE: ${pad(s.score, 3)}`, s.score >= 80 ? 'APUNTAMIENTO OK' : 'REORIENTE ANTENA', 'ENT=REPETIR CLR=SALIR'];
+      const status = { mode: 'NORM', crypto: this.cryptoText(n.crypto, n.key) };
+      if (s.stage === 0) return { status, rows: [{ c: 'PRESS ENT' }, { c: 'RSSI' }], foot: { c: 'USE < > TO SELECT ITEM' } };
+      if (s.stage === 1) return { status, rows: [{ c: 'RSSI TEST' }, { c: 'PINGING...' }] };
+      return { status, rows: [{ c: `RSSI SCORE: ${pad(s.score, 3)}` }, { c: s.score >= 80 ? 'POINTING OK' : 'REPOINT ANTENNA' }], foot: { c: 'PRESS ENT AGAIN · CLR' } };
     }
     view_TODRX() {
       const s = this.screen;
-      if (!s.done) return ['TOD SYNC', 'WAITING FOR', 'RECEPTION', ''];
-      return s.ok ? ['TOD SYNC', 'SUCCESSFUL RECEIVE', SIM.utcStamp(this.env.now()).slice(0, 19), 'PRESS CLR'] : ['TOD SYNC', 'NO RECEPTION', '', 'PRESS CLR'];
+      if (!s.done) return { status: { title: 'TOD SYNC' }, rows: [{ c: 'WAITING FOR' }, { c: 'RECEPTION' }] };
+      return s.ok
+        ? { status: { title: 'TOD SYNC' }, rows: [{ c: 'SUCCESSFUL RECEIVE' }, { c: SIM.utcStamp(this.env.now()).slice(0, 19) }], foot: { c: 'PRESS CLR' } }
+        : { status: { title: 'TOD SYNC' }, rows: [{ c: 'NO RECEPTION' }, { c: '' }], foot: { c: 'PRESS CLR' } };
     }
     view_FILL() {
       const s = this.screen;
       const lab = this.fillLabel(s.req);
+      const R = (a, b) => ({ status: { title: 'FILL MENU' }, rows: [{ c: a }, { c: b }], foot: { c: lab } });
       switch (s.stage) {
-        case 'READY': return ['FILL MENU', 'PRESS ENTER', 'TO INITIATE', lab];
-        case 'PROGRESS': return ['FILL MENU', 'FILL IN PROGRESS', '', lab];
-        case 'STORE': return ['FILL MENU', 'KEY STORE', 'IN PROGRESS', lab];
-        case 'DONE': return ['FILL MENU', 'FILL DONE', 'PRESS ANY KEY', lab];
-        case 'BAD': return ['FILL MENU', 'BAD FILL', 'PRESS ANY KEY', lab];
-        case 'MORE': return ['FILL MENU', 'MORE FILL DATA?', blink(s.more), lab];
-        default: return ['FILL MENU', 'CHANGE SW FROM LD', '', lab];
+        case 'READY': return R('PRESS ENTER', 'TO INITIATE');
+        case 'PROGRESS': return R('FILL IN PROGRESS', '');
+        case 'STORE': return R('KEY STORE', 'IN PROGRESS');
+        case 'DONE': return R('FILL DONE', 'PRESS ANY KEY');
+        case 'BAD': return R('BAD FILL', 'PRESS ANY KEY');
+        case 'MORE': return R('MORE FILL DATA?', blink(s.more));
+        default: return R('CHANGE SW FROM LD', '');
       }
     }
     view_MENU() {
       const s = this.screen;
       const items = typeof s.items === 'function' ? s.items() : s.items;
       s.idx = Math.min(s.idx, items.length - 1);
-      // reparte los elementos en filas de 22 columnas
+      // reparte los elementos en filas de 20 columnas (letra grande)
+      const BW = 20;
       const rows = [];
       let row = [];
       let w = 0;
       items.forEach((it, i) => {
-        const len = it.label.length + 1;
-        if (w + len > W && row.length) {
+        const len = it.label.length + (row.length ? 2 : 0);
+        if (w + len > BW && row.length) {
           rows.push(row);
           row = [];
           w = 0;
         }
         row.push(i);
-        w += len;
+        w += it.label.length + (row.length > 1 ? 2 : 0);
       });
       if (row.length) rows.push(row);
       const r = rows.findIndex((rr) => rr.includes(s.idx));
       const start = Math.max(0, Math.min(r, rows.length - 2));
-      const lines = rows.slice(start, start + 2).map((rr) => rr.map((i) => (i === s.idx ? blink(items[i].label) : items[i].label)).join(' '));
+      const lines = rows.slice(start, start + 2).map((rr) => rr.map((i) => (i === s.idx ? blink(items[i].label) : items[i].label)).join('  '));
       while (lines.length < 2) lines.push('');
-      return [lr(s.title, this.swTag(), W), lines[0], lines[1], 'USE < > TO SELECT ITEM'];
+      return { status: { title: '' }, rows: [{ l: lines[0] }, { l: lines[1] }], foot: { l: s.ctx || '', c: 'USE < > TO SELECT ITEM' } };
     }
     view_WIZ() {
       const s = this.screen;
       const fd = this.curField();
-      if (!fd) return [s.title, '', '', ''];
+      if (!fd) return { status: { title: '' }, rows: [{ c: s.title }, { c: '' }] };
       const ed = s.ed || {};
-      const l1 = lr(s.title, this.swTag(), W);
+      const status = { title: '' };
+      const foot = (hint) => ({ l: s.ctx || '', c: hint });
       if (fd.kind === 'choice') {
         const v = fd.fmt ? fd.fmt(ed.val) : String(ed.val);
-        return [l1, fd.label, blink(v), '6/9=▲▼  ENT  CLR'];
+        return { status, rows: [{ c: fd.label }, { c: blink(v) }], foot: foot('USE ▲▼ TO SELECT ITEM') };
       }
-      if (fd.kind === 'info') return [l1, fd.label, fd.lines[0] || '', fd.lines[1] || 'ENT=CONTINUAR'];
+      if (fd.kind === 'info') return { status, rows: [{ c: fd.label }, { c: fd.lines[0] || '' }], foot: foot(fd.lines[1] || 'PRESS ENT') };
       if (fd.kind === 'num') {
         const str = ed.chars.join('');
         const shown = ed.cur >= 0 ? str.slice(0, ed.cur) + blink(str[ed.cur]) + str.slice(ed.cur + 1) : str;
         const raw = fd.parse ? fd.parse(str) : Number(str);
         const sfx = fd.suffix ? ' ' + fd.suffix(raw) : fd.unit ? ' ' + fd.unit : '';
-        return [l1, fd.label, `${fd.prefix || ''}${shown}${sfx}`, 'NUM ◄► CLR ENT'];
+        return { status, rows: [{ c: fd.label }, { c: `${fd.prefix || ''}${shown}${sfx}` }], foot: foot('ENTER DIGITS · ◄ ► · ENT') };
       }
-      // texto
       const chars = ed.chars.slice();
       const shown = chars.map((ch, i) => (i === ed.cur ? blink(ch || ' ') : ch)).join('') + (ed.cur >= chars.length ? blink(' ') : '');
-      return [l1, fd.label, shown, '1=ABC 2=DEF ... ►'];
+      return { status, rows: [{ c: fd.label }, { c: shown }], foot: foot('1ABC 2DEF ... ► NEXT CHAR') };
+    }
+
+    /** Texto plano de una fila {l,c,r}. */
+    static rowText(r) {
+      if (!r) return '';
+      return [r.l, r.c, r.r].filter((x) => x != null && x !== '').join(' ');
     }
 
     display() {
-      const blank = { lines: ['', '', '', ''], ann: {}, lit: false };
+      const blank = { lit: false, status: null, rows: [], grid: null, foot: null, text: ['', '', '', ''] };
       if (['OFF', 'CLR'].includes(this.sw) || this.screen.id === 'OFF' || this.battery <= 0) return blank;
       const view = this['view_' + this.screen.id];
       if (!view) return blank;
-      const lines = view.call(this).slice(0, 4);
-      while (lines.length < 4) lines.push('');
-      if (this.msg && !['BOOT', 'ZALL'].includes(this.screen.id)) lines[3] = this.msg;
+      const v = view.call(this);
+      if (this.msg && !['BOOT', 'ZALL'].includes(this.screen.id)) {
+        v.foot = { c: this.msg };
+        if (v.grid) {
+          v.rows = [v.rows[0], { l: v.grid.map((g) => g[0]).join(' ') }];
+          v.grid = null;
+        }
+      }
+      const rt = this.tx ? 'T' : 'R';
+      const status = v.status && v.status.title !== undefined
+        ? { title: v.status.title, sw: this.swTag() }
+        : v.status ? { rt, bat: Math.ceil(this.battery), mode: v.status.mode, crypto: v.status.crypto, sw: this.swTag() } : null;
+      const rows = (v.rows || []).slice(0, 2);
+      const statusText = !status ? '' : status.title !== undefined ? SIM.lr(status.title, status.sw, 34) : SIM.lr(`${status.rt} BAT ${status.mode} ${status.crypto}`.trim(), status.sw, 34);
+      const text = [
+        statusText,
+        Radio.rowText(rows[0]),
+        v.grid ? v.grid.map((g) => g[0]).join(' ') : Radio.rowText(rows[1]),
+        v.grid ? v.grid.map((g) => g[1]).join(' ') : Radio.rowText(v.foot),
+      ];
       return {
-        lines: lines.map((l) => fit(l, W)),
         lit: true,
         light: this.light,
+        status,
+        rows,
+        grid: v.grid || null,
+        foot: v.grid ? null : v.foot || null,
+        icons: !!v.icons,
+        meter: this.tx ? 1 : this.rx ? 0.75 : 0,
+        text,
+        lines: text, // compatibilidad
         ann: { T: this.tx, R: !!this.rx, BAT: this.battery <= 15 },
       };
     }
