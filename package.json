@@ -1,7 +1,7 @@
 {
   "name": "simulador-prc117f-skl",
   "productName": "Simulador PRC-117F SKL",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Simulador de entrenamiento de la radio AN/PRC-117F y del cargador de claves SKL AN/PYQ-10",
   "author": "hector9414",
   "private": true,

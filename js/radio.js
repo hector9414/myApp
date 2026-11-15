@@ -1249,7 +1249,8 @@
     /** Guarda la clave en el banco/tipo/número elegido en la radio. Devuelve true o motivo de error. */
     storeKey(req, key, protocol) {
       // DS-101 transporta el tipo de clave: la radio rechaza un tipo distinto del seleccionado
-      if (protocol === 'DS-101' && (key.bank !== req.crypto || key.type !== req.keyType)) {
+      const bankOk = key.bank === req.crypto || (key.bank === 'SATCOM' && ['VINSON', 'ANDVT', 'KG-84'].includes(req.crypto));
+      if (protocol === 'DS-101' && (!bankOk || key.type !== req.keyType)) {
         return `DS-101: la clave es ${key.bank} ${key.type} y la radio esperaba ${req.crypto} ${req.keyType}`;
       }
       const rec = { tag: key.tag, src: 'SKL', proto: protocol, at: this.env.now() };

@@ -15,7 +15,7 @@
   const SATELLITE = { name: 'SAT-ENT 105W', az: 135, el: 40 };
 
   /** Controlador DAMA de entrenamiento. */
-  const DAMA = { channel: 54, networkAddr: 51234, knownTBA: [10452], owTsk: 'ETD 07 5AT900', maxPrecedence: 'PRIORITY' };
+  const DAMA = { channel: 54, networkAddr: 51234, knownTBA: [10452], owTsk: 'ETD 07 5AT900 A-1', maxPrecedence: 'PRIORITY' };
 
   const STATIONS = [
     {
@@ -26,37 +26,37 @@
       replies: ['Sin novedad en el puesto de mando.', 'Continúe con la misión.'],
     },
     {
-      id: 'CONDOR', call: 'Cóndor 3', type: 'LOS', freq: 62.75, mod: 'FM', sq: 'TONE', crypto: { mode: 'VINSON', tag: 'ETD 01 5AT900' }, distanceKm: 15,
-      soi: 'LOS 62.75000 FM CT VINSON ETD 01',
-      desc: 'Pelotón destacado · LOS 62.75000 MHz FM · CT VINSON (ETD 01 5AT900) · 15 km',
+      id: 'CONDOR', call: 'Cóndor 3', type: 'LOS', freq: 62.75, mod: 'FM', sq: 'TONE', crypto: { mode: 'VINSON', tag: 'ETD 02 5AT900 A-1' }, distanceKm: 15,
+      soi: 'LOS 62.75000 FM CT VINSON ETD 02',
+      desc: 'Pelotón destacado · LOS 62.75000 MHz FM · CT VINSON (ETD 02 5AT900, segmento 1) · 15 km',
       chatter: ['Aquí Cóndor 3. En posición, sin contacto. Corto.'],
       replies: ['Red cifrada verificada.', 'Mantengo posición.'],
     },
     {
-      id: 'JAGUAR', call: 'Jaguar 1', type: 'SINCGARS', netId: 345, hop: 'ETD 21 5AT900', crypto: { mode: 'VINSON', tag: 'ETD 11 5AT900' }, distanceKm: 8,
+      id: 'JAGUAR', call: 'Jaguar 1', type: 'SINCGARS', netId: 345, hop: 'ETD 21 5AT900 A-1', crypto: { mode: 'VINSON', tag: 'ETD 11 5AT900 A-1' }, distanceKm: 8,
       soi: 'SINCGARS F345 CT VINSON (LOADSET C1)',
-      desc: 'Elemento de maniobra · SINCGARS red F345 (loadset SINCGARS, hopset H1) · CT VINSON TEK C1 (ETD 11) · 8 km',
+      desc: 'Elemento de maniobra · SINCGARS red F345 (loadset RT1 PRC117F, hopset H1) · CT VINSON TEK C1 (ETD 11) · 8 km',
       chatter: ['Aquí Jaguar 1. Iniciando movimiento hacia la fase dos. Corto.'],
       replies: ['Sincronizado en salto de frecuencia.', 'Le tengo en la red de maniobra.'],
     },
     {
-      id: 'AGUILA', call: 'Águila 2', type: 'HAVEQUICK', hqNet: '00.300', wod: 'ETD 50 5AT900', crypto: null, distanceKm: 40, airborne: true,
+      id: 'AGUILA', call: 'Águila 2', type: 'HAVEQUICK', hqNet: '00.300', wod: 'ETD 50 5AT900 A-1', crypto: null, distanceKm: 40, airborne: true,
       soi: 'HAVEQUICK NET 00.300 PT MWOD ETD 50',
       desc: 'Aeronave de apoyo · HAVEQUICK II red 00.300 · MWOD ETD 50 5AT900 en la posición del día UTC · TOD · PT · 40 km (en vuelo)',
       chatter: ['Aquí Águila 2, en órbita sobre el punto de control. Corto.'],
       replies: ['Le tengo en salto HAVEQUICK.', 'Disponible para apoyo durante veinte minutos.'],
     },
     {
-      id: 'CENTAURO', call: 'Base Centauro', type: 'SAT', code: 150, crypto: { mode: 'ANDVT', tag: 'ETD 31 5AT900' },
-      soi: 'SATCOM CODE 150 (5K) CT ANDVT ETD 31',
-      desc: 'Base de operaciones · SATCOM dedicado código 150 (5 kHz) · CT ANDVT (ETD 31 5AT900) · antena SATCOM apuntada',
+      id: 'CENTAURO', call: 'Base Centauro', type: 'SAT', code: 150, crypto: { mode: 'ANDVT', tag: (t) => SIM.satcomTag(t) },
+      soi: 'SATCOM CODE 150 (5K) CT ANDVT ETD 01 (MES)',
+      desc: 'Base de operaciones · SATCOM dedicado código 150 (5 kHz) · CT ANDVT (ETD 01 5AT900, segmento del mes en curso) · antena SATCOM apuntada',
       chatter: ['Aquí Base Centauro. Ventana de satélite estable. Corto.'],
       replies: ['Enlace satelital en banda estrecha confirmado.', 'Mensaje copiado, se retransmite al escalón superior.'],
     },
     {
-      id: 'ORION', call: 'Nodo Orión', type: 'DAMA', netAddr: DAMA.networkAddr, crypto: { mode: 'ANDVT', tag: 'ETD 44 5AT900' },
+      id: 'ORION', call: 'Nodo Orión', type: 'DAMA', netAddr: DAMA.networkAddr, crypto: { mode: 'ANDVT', tag: (t) => SIM.satcomTag(t) },
       soi: `DAMA CH ${pad(DAMA.channel, 3)} NET ${DAMA.networkAddr} TBA ${DAMA.knownTBA[0]}`,
-      desc: `Nodo de mando · DAMA canal ${pad(DAMA.channel, 3)} (25 kHz AC) · dirección de red ${DAMA.networkAddr} · su TBA: ${DAMA.knownTBA[0]} · TSK de orderwire ${DAMA.owTsk} · CT ANDVT (ETD 44 5AT900) · config. 060 · precedencia ROUTINE`,
+      desc: `Nodo de mando · DAMA canal ${pad(DAMA.channel, 3)} (25 kHz AC) · dirección de red ${DAMA.networkAddr} · su TBA: ${DAMA.knownTBA[0]} · TSK de orderwire ${DAMA.owTsk} · CT ANDVT (ETD 01 5AT900, segmento del mes) · config. 060 · precedencia ROUTINE`,
       chatter: ['Aquí Nodo Orión. Red DAMA operativa, mantengan disciplina de red. Corto.'],
       replies: ['Le tengo en la red DAMA.', 'Asignación DAMA verificada.'],
     },
@@ -111,7 +111,8 @@
       if (st.crypto) {
         if (!encrypted) return `${st.call} opera cifrado (CT ${st.crypto.mode}); su transmisión salió en claro (interruptor en PT o COMSEC NONE).`;
         if (mode !== st.crypto.mode) return `${st.call} usa ${st.crypto.mode}; su preset usa ${mode}.`;
-        if (tag !== st.crypto.tag) return `La TEK seleccionada no es la de la red de ${st.call}: no pueden descifrarle.`;
+        const want = typeof st.crypto.tag === 'function' ? st.crypto.tag(this.env.now()) : st.crypto.tag;
+        if (tag !== want) return `La TEK seleccionada no es la de la red de ${st.call} (${want}): no pueden descifrarle.`;
         return null;
       }
       if (encrypted) return `${st.call} opera en claro (PT): no puede descifrar su transmisión. Ponga el interruptor en PT o COMSEC en NONE.`;

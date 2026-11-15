@@ -103,31 +103,31 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
 .kdu { background: #2e3324; border: 3px solid #161a0d; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .lcd-bezel { background: #11140a; border-radius: 8px; padding: 7px; border: 2px solid #0a0c05; }
 .lcd {
-  container-type: inline-size; aspect-ratio: 3.15 / 1; border-radius: 4px; overflow: hidden;
+  container-type: inline-size; aspect-ratio: 2.7 / 1; border-radius: 4px; overflow: hidden;
   background: var(--lcd-off); color: transparent; box-shadow: inset 0 2px 8px rgba(0,0,0,.55);
-  display: grid; grid-template-rows: auto 1fr 1fr auto; padding: 1.4cqw 2cqw; font-family: "Courier New", Courier, var(--mono);
+  display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto; row-gap: .6cqw; padding: 1.6cqw 2.4cqw; font-family: "Courier New", Courier, var(--mono);
 }
 .lcd.on { background: var(--lcd); color: var(--lcd-ink); }
 .lcd.on[data-light="1"] { background: #b6d47c; }
 .lcd.on[data-light="2"] { background: #c4e889; box-shadow: inset 0 2px 8px rgba(0,0,0,.3), 0 0 14px rgba(196,232,137,.3); }
 .lcd.on[data-light="3"] { background: #d3f59a; box-shadow: inset 0 2px 8px rgba(0,0,0,.3), 0 0 22px rgba(211,245,154,.45); }
-.lcd-st { display: flex; justify-content: space-between; align-items: center; font: 700 4cqw/1.1 Arial, Helvetica, sans-serif; letter-spacing: .1cqw; white-space: nowrap; overflow: hidden; }
+.lcd-st { display: flex; justify-content: space-between; align-items: center; min-height: 5.2cqw; font: 700 3.9cqw/1.25 Arial, Helvetica, sans-serif; letter-spacing: .1cqw; white-space: nowrap; overflow: hidden; }
 .lcd-st .st-l { display: flex; align-items: center; gap: 1.2cqw; overflow: hidden; }
 .lcd-st .rti { font-weight: 800; }
 .lbat { display: inline-block; width: 9cqw; height: 2.6cqw; border: .45cqw solid currentColor; position: relative; }
 .lbat b { position: absolute; inset: 0 auto 0 0; background: currentColor; }
-.lcd-big { display: flex; align-items: center; font: 600 7.8cqw/1 "Times New Roman", Times, serif; white-space: pre; overflow: hidden; min-width: 0; }
+.lcd-big { display: flex; align-items: center; font: 600 7.2cqw/1.18 "Times New Roman", Times, serif; white-space: pre; overflow: hidden; min-width: 0; min-height: 0; }
 .lcd .cols { display: grid; grid-template-columns: auto 1fr auto; gap: 2cqw; flex: 1; min-width: 0; align-items: center; }
 .lcd .cols .c { text-align: center; }
 .lcd-ic { display: inline-flex; align-items: center; gap: 1.2cqw; margin-left: 2cqw; }
 .lcd-ic .cyc { font-style: normal; font-size: 6cqw; }
 .lcd-ic .meter { display: inline-block; width: 9cqw; height: 4.4cqw; border: .5cqw solid currentColor; position: relative; }
 .lcd-ic .meter b { position: absolute; inset: 0 auto 0 0; background: currentColor; }
-.lcd-foot { font: 700 3.9cqw/1.2 Arial, Helvetica, sans-serif; white-space: nowrap; overflow: hidden; align-self: end; }
-.lcd-grid { grid-row: span 3; display: grid; grid-template-columns: repeat(var(--n), auto); justify-content: space-between; align-content: center; }
+.lcd-foot { font: 700 3.7cqw/1.3 Arial, Helvetica, sans-serif; white-space: nowrap; overflow: hidden; align-self: end; min-height: 4.8cqw; }
+.lcd-grid { grid-row: span 2; display: grid; grid-template-columns: repeat(var(--n), auto); justify-content: space-between; align-content: center; row-gap: .4cqw; }
 .lcd-grid div { display: flex; flex-direction: column; }
-.lcd-grid b { font: 600 7.8cqw/1 "Times New Roman", Times, serif; white-space: nowrap; }
-.lcd-grid small { font: 700 3.9cqw/1.4 Arial, Helvetica, sans-serif; }
+.lcd-grid b { font: 600 7.2cqw/1.15 "Times New Roman", Times, serif; white-space: nowrap; }
+.lcd-grid small { font: 700 3.7cqw/1.35 Arial, Helvetica, sans-serif; }
 .lcd-grid div:last-child { align-items: flex-end; }
 .blink { animation: blink 1s steps(2, start) infinite; }
 @keyframes blink { 50% { background: #1a240c; color: #b9d27a; } }
@@ -373,7 +373,6 @@ select { font: inherit; }
 .ce-bat b { display: block; width: 100%; }
 .ce-bat.g b { background: #2f9e44; } .ce-bat.a b { background: #e6b800; } .ce-bat.r b { background: #d10000; }
 .ce-tray small { font-size: 9px; margin-right: 2px; }
-.ce-pen { width: 18px; height: 16px; background: linear-gradient(135deg, transparent 45%, #d10000 45% 55%, transparent 55%), #fff; border: 1px solid #333; }
 .ce-sw { width: 20px; height: 18px; background: none; border: 0; padding: 0; display: grid; place-items: center; }
 .ce-sw i { width: 14px; height: 12px; border: 2px solid #00f; box-shadow: 3px 3px 0 -1px #00f; }
 .ce-startmenu { position: absolute; bottom: 100%; left: 0; display: flex; background: #c0c0c0; border: 2px outset #fff; z-index: 50; }
@@ -464,3 +463,50 @@ select { font: inherit; }
   * { transition: none !important; }
   .sk-spinner { animation: none; }
 }
+
+/* ------------------------------------------------------------ SKL: diálogos del manual técnico e Input Panel */
+.small { font-size: 12.5px; }
+.ce-modal.top { align-items: flex-start; padding-top: 30px; }
+.ce-screen.with-sip .ce-modal.top { padding-top: 26px; }
+.ce-dbtns .grow { flex: 1; }
+.ce-dbtns.inner { padding: 4px 0 0; }
+.ce-dbtns .ce-btn { flex: 0 1 auto; min-width: 58px; }
+.ce-group { border: 1px solid #808080; margin: 4px 0 8px; padding: 4px 8px 6px; }
+.ce-group legend { font-size: 11.5px; padding: 0 3px; }
+.ce-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ce-check.dis, .ce-radio.dis { color: #8a8a8a; }
+.ce-check.center { justify-content: center; margin-top: 8px; }
+.ce-kls { display: grid; grid-template-columns: 1.15fr 1fr; gap: 6px 14px; align-items: end; }
+.ce-kls .lbl { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.ce-kls .lbl.inline { flex-direction: row; align-items: center; gap: 6px; }
+.ce-kls select, .ce-kls input { font: 12px Tahoma, sans-serif; border: 1px solid #000; padding: 2px 3px; background: #fff; color: #000; min-width: 0; width: 100%; }
+.ce-kls select:disabled, .ce-kls input:disabled { background: #d4d4d4; color: #8a8a8a; border-color: #8a8a8a; }
+.ce-kls .lbl.inline input { width: 46px; }
+.ce-kls .chk { display: flex; flex-direction: column; }
+.ce-kls input[type=checkbox] { width: auto; flex: none; margin: 0; }
+.ce-kls .chk .ce-check { white-space: nowrap; font-size: 12px; }
+.ce-ready { display: flex; flex-direction: column; gap: 4px; }
+.ce-ready .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ce-rf { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: center; font-size: 12px; }
+.ce-rf.w { grid-template-columns: 34% 1fr; }
+.ce-rf b { font-weight: 400; background: #d4d4d4; border: 1px solid #808080; padding: 1px 4px; min-height: 18px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ce-rf.hl b { background: #00006b; color: #fff; font-weight: 700; }
+.ce-list .g4, .ce-list .ce-lh.g4 { display: grid; grid-template-columns: 1fr 26px 30px 1fr; gap: 3px; align-items: center; white-space: nowrap; }
+.ce-list .g4.on { background: #00006b; color: #fff; }
+.ce-list.grid4 { max-height: 200px; }
+.ce-skl-logo { margin-left: auto; font: italic 900 15px Arial, sans-serif; color: #d10000; align-self: center; }
+.ce-kv2 { display: grid; grid-template-columns: 40% 1fr; gap: 6px; margin: 2px 0; font-size: 12px; }
+.ce-tipbox { display: flex; gap: 8px; align-items: flex-start; }
+.ce-tipbox p { margin: 0; font-size: 12px; }
+.ce-bulb { width: 16px; height: 20px; border-radius: 50% 50% 40% 40%; background: radial-gradient(circle at 50% 40%, #fff7a8, #ffd800 60%, #b39500); flex: none; }
+.ce-sip { flex: none; background: #c0c0c0; border-top: 2px solid #808080; padding: 2px; }
+.ce-sip-t { font: 700 11px Tahoma, sans-serif; background: #808080; color: #fff; padding: 1px 4px; margin-bottom: 2px; }
+.ce-sip-r { display: flex; gap: 1px; margin-bottom: 1px; }
+.ce-k { flex: 1 1 0; min-width: 0; height: 19px; padding: 0; border: 1px solid #000; background: #fff; font: 700 10px Tahoma, sans-serif; color: #000; }
+.ce-k.w { flex: 1.5 1 0; font-size: 8.5px; }
+.ce-k.sp { flex: 5 1 0; }
+.ce-k.on { background: #000; color: #fff; }
+.ce-k:active { background: #00006b; color: #fff; }
+.ce-pen, .ce-kbd { width: 20px; height: 18px; border: 1px solid #333; padding: 0; }
+.ce-pen { background: linear-gradient(135deg, transparent 45%, #d10000 45% 55%, transparent 55%), #fff; }
+.ce-kbd { background: repeating-linear-gradient(90deg, #fff 0 3px, #333 3px 4px), #fff; }

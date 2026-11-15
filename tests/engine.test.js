@@ -97,25 +97,16 @@ function pgmNet(t, i, type, hop) {
 }
 
 const dlg = (t, btn, fields = {}) => t.skl.act('dlg', { btn, fields });
-const SSO_PASS = 'Entrena2026';
+const SAT = (t) => `ETD 01 5AT900|A|${new Date(t.clock.now()).getMonth() + 1}`; // segmento SATCOM del mes
+const SATTAG = (t) => SIM.satcomTag(t.clock.now());
 
-/** Primer encendido del SKL: inicialización de la tarjeta como SSO (curso, «Initial SSO Login»). */
-function sklLogin(t) {
+/** Encendido y logon en Core Library (CIK insertado, sin cambio de contraseña); la UAS se abre sola. */
+function sklLogin(t, user = 'OPERADOR', pass = 'Operador1') {
   t.skl.powerButton();
   t.tick(2500);
-  assert.equal(t.skl.dlg.type, 'DEFAULT_SSO');
-  dlg(t, 'OK', { user: 'SSO', pass: 'DEFAULTPIN' });
-  assert.match(t.skl.dlg.text, /paired/);
-  dlg(t, 'OK');
-  assert.match(t.skl.dlg.text, /External CIK/);
-  dlg(t, 'OK');
-  assert.equal(t.skl.dlg.type, 'CHANGE_PW');
-  dlg(t, 'OK', { old: 'DEFAULTPIN', new: 'corta', confirm: 'corta' });
-  assert.match(t.skl.dlg.text, /8 characters/);
-  dlg(t, 'OK');
-  dlg(t, 'OK', { old: 'DEFAULTPIN', new: SSO_PASS, confirm: SSO_PASS });
-  assert.match(t.skl.dlg.text, /successfully updated/);
-  dlg(t, 'OK');
+  assert.equal(t.skl.dlg.type, 'LOGON');
+  assert.equal(t.skl.sip, true, 'Input Panel abierto');
+  dlg(t, 'OK', { user, pass });
   t.tick(2000);
   assert.equal(t.skl.dlg.type, 'STARTUP');
   dlg(t, 'OK');
@@ -124,8 +115,8 @@ function sklLogin(t) {
   assert.equal(t.skl.kov, 'GREEN');
 }
 
-/** Carga completa de una clave con el SKL en modo KYK-13 (DS-102). */
-function fillKey(t, tag, crypto, keyType, number, opts = {}) {
+/** Carga completa de una clave: File > Transmit > Load Selected Keys > Key Load Settings > Ready to Send Key > Status. */
+function fillKey(t, keyId, crypto, keyType, number, opts = {}) {
   const r = t.radio;
   if (r.sw !== 'LD') r.setSwitch('LD');
   t.tick(10);
@@ -140,18 +131,20 @@ function fillKey(t, tag, crypto, keyType, number, opts = {}) {
   t.skl.dialogs = [];
   t.skl.send = null;
   t.skl.act('tab', 'KEYS');
-  t.skl.act('select', 'seg:' + tag);
-  t.skl.act('cmd', 'load');
-  assert.equal(t.skl.dlg.type, 'LOAD_OPTS', t.skl.dlg && t.skl.dlg.text);
-  dlg(t, 'OK', { protocol: opts.protocol || 'DS-102', activation: 'KYK-13' });
+  t.skl.act('cmd', 'loadSelectedKeys');
+  assert.equal(t.skl.dlg.type, 'KEY_SELECT');
+  dlg(t, 'OK', { keys: [keyId] });
+  assert.equal(t.skl.dlg.type, 'KEY_SETTINGS', t.skl.dlg && t.skl.dlg.text);
+  dlg(t, 'OK', { protocol: opts.protocol || 'DS-102', activate: opts.activate || (opts.protocol === 'DS-101' ? 'DS-101' : 'KYK-13') });
   assert.equal(t.skl.dlg.type, 'READY');
-  dlg(t, 'OK');
+  dlg(t, 'OK', { every: true });
   assert.equal(t.skl.dlg.type, 'STATUS');
-  assert.ok(t.skl.send.lines.includes('Press INITIATE Button…'));
+  assert.ok(/Press INITIATE Button|Attempting to Connect/.test(t.skl.send.lines[0]));
   press(t, 'ENT');
   t.tick(3000);
   const stage = r.screen.stage;
   if (t.skl.dlg && t.skl.dlg.type === 'MSG') dlg(t, 'OK');
+  if (t.skl.dlg && t.skl.dlg.type === 'STATUS') dlg(t, t.skl.dlg.done ? 'Close' : 'Cancel');
   press(t, 'ENT'); // FILL DONE / BAD FILL -> MORE FILL DATA? YES
   press(t, '9', 'ENT'); // NO
   return stage;
@@ -251,29 +244,34 @@ test('carga KYK-13 (DS-102) desde el SKL; DS-101 comprueba el tipo; peligro de c
   assert.equal(t.radio.hazards, 1);
   t.conn.j1 = 'HANDSET';
   t.radio.hazards = 0;
-  // carga correcta
-  assert.equal(fillKey(t, 'ETD 01 5AT900', 'VINSON', 'TEK', 1), 'DONE');
-  assert.equal(t.radio.keys.VINSON.TEK[0].tag, 'ETD 01 5AT900');
-  assert.equal(t.radio.keys.VINSON.TEK[0].proto, 'DS-102');
+  // carga correcta del segmento SATCOM del mes en ANDVT TEK 01
+  assert.equal(fillKey(t, SAT(t), 'ANDVT', 'TEK', 1), 'DONE');
+  assert.equal(t.radio.keys.ANDVT.TEK[0].tag, SATTAG(t));
+  assert.equal(t.radio.keys.ANDVT.TEK[0].proto, 'DS-102');
   assert.equal(SIM.plain(t.radio.display().lines[1]).trim(), 'CHANGE SW FROM LD');
-  // DS-101 con un tipo distinto -> BAD FILL
+  // Activate Mode distinto de KYK-13 -> BAD FILL
   t.radio.setSwitch('PT');
   t.tick(10);
-  assert.equal(fillKey(t, 'ETD 31 5AT900', 'VINSON', 'TEK', 2, { device: 'CYZ-10 DS-101', protocol: 'DS-101' }), 'BAD');
-  assert.equal(t.radio.keys.VINSON.TEK[1], null);
+  assert.equal(fillKey(t, SAT(t), 'ANDVT', 'TEK', 2, { activate: 'KYX-15' }), 'BAD');
+  // DS-101 con un tipo distinto (BD ampliada: TEK VINSON en el banco ANDVT) -> BAD FILL
+  t.skl.loadExtendedDb();
+  t.radio.setSwitch('PT');
+  t.tick(10);
+  assert.equal(fillKey(t, 'ETD 02 5AT900|A|1', 'ANDVT', 'TEK', 2, { device: 'CYZ-10 DS-101', protocol: 'DS-101' }), 'BAD');
+  assert.equal(t.radio.keys.ANDVT.TEK[1], null);
   // protocolo distinto entre radio y SKL -> BAD FILL
   t.radio.setSwitch('PT');
   t.tick(10);
-  assert.equal(fillKey(t, 'ETD 31 5AT900', 'ANDVT', 'TEK', 1, { protocol: 'DS-101' }), 'BAD');
-  // clave caducada (RED KEY): el SKL no la carga
+  assert.equal(fillKey(t, SAT(t), 'ANDVT', 'TEK', 3, { protocol: 'DS-101' }), 'BAD');
+  // segmento caducado (enero, RED KEY): el SKL no lo carga
   t.skl.dialogs = [];
   t.skl.send = null;
-  t.skl.act('select', 'seg:ETD 02 5AT900');
+  t.skl.act('select', 'seg:ETD 01 5AT900|A|1');
   t.skl.act('cmd', 'load');
   assert.match(t.skl.dlg.text, /expired/);
   dlg(t, 'OK');
   // solo etiqueta, sin variable (KEY TAG)
-  t.skl.act('select', 'seg:ETD 60 5AT900');
+  t.skl.act('select', 'seg:ETD 60 5AT900|A|1');
   t.skl.act('cmd', 'load');
   assert.match(t.skl.dlg.text, /KEY TAG/);
   dlg(t, 'OK');
@@ -283,7 +281,8 @@ test('carga KYK-13 (DS-102) desde el SKL; DS-101 comprueba el tipo; peligro de c
   dlg(t, 'Yes');
   assert.match(t.skl.dlg.text, /deleted/);
   dlg(t, 'OK');
-  assert.equal(t.skl.keyById('ETD 02 5AT900'), undefined);
+  assert.equal(t.skl.keyById('ETD 01 5AT900|A|1'), undefined);
+  assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'expired'), t).every((c) => c.ok));
   fillEnd(t);
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'fill-kyk'), t).every((c) => c.ok));
 });
@@ -292,7 +291,8 @@ test('red LOS cifrada VINSON: CT obligatorio, clave y alcance', () => {
   const t = setup();
   sklLogin(t);
   on(t);
-  fillKey(t, 'ETD 01 5AT900', 'VINSON', 'TEK', 1);
+  t.skl.loadExtendedDb();
+  fillKey(t, 'ETD 02 5AT900|A|1', 'VINSON', 'TEK', 1);
   fillEnd(t, 'PT');
   pgmNet(t, 2, 'LOS FIX FREQUENCY');
   menu(t, 'FREQ');
@@ -326,34 +326,38 @@ test('SINCGARS: loadset por ICOM desde la pestaña Plats y contacto', () => {
   t.conn.j1 = 'SKL';
   choose(t, 'CYZ10-RDS');
   assert.equal(t.radio.screen.id, 'FILL');
-  // Plats > VEH MANDO > SINCGARS > LOAD
+  t.skl.loadExtendedDb();
+  // Plats > CDR HMMV > RT1 PRC117F > File > Transmit > Load...
   const icom = () => {
     t.skl.act('tab', 'PLATS');
-    t.skl.act('select', 'pe:SINCGARS');
+    t.skl.act('select', 'pe:eq');
     t.skl.act('cmd', 'load');
     t.tick(1000);
     assert.equal(t.skl.dlg.type, 'SINC_MODE');
-    dlg(t, 'OK', { transfer: 'ICOM', sendTime: true });
+    dlg(t, 'OK', { transfer: 'ICOM', includeTime: true });
     assert.equal(t.skl.dlg.type, 'ECU_WIZ');
-    dlg(t, 'Next');
     dlg(t, 'Next');
     dlg(t, 'Send');
   };
-  // Send antes de que la radio espere -> fallo
+  // Send antes de que la radio espere -> «No response», Re-load equipment? > No
   icom();
   t.tick(2000);
-  assert.ok(t.skl.icom.lines.some((l) => /Error/.test(l)));
-  dlg(t, 'Cancel');
+  assert.ok(t.skl.icom.lines.some((l) => /No response/.test(l)));
+  assert.equal(t.skl.dlg.type, 'RELOAD');
+  dlg(t, 'No');
   // ahora con la radio en FILL IN PROGRESS
   press(t, 'ENT');
   assert.equal(t.radio.screen.stage, 'PROGRESS');
   icom();
   t.tick(6000);
-  assert.match(t.skl.dlg.text, /ICOM transfer successful/);
+  assert.equal(t.skl.dlg.type, 'RELOAD');
+  dlg(t, 'No');
+  assert.match(t.skl.dlg.text, /Operation Successful/);
   dlg(t, 'OK');
+  dlg(t, 'Close');
   assert.equal(t.radio.screen.stage, 'DONE');
   assert.equal(t.radio.keys.SINCGARS.TSK[19].netId, 345);
-  assert.equal(t.radio.keys.VINSON.TEK[20].tag, 'ETD 11 5AT900');
+  assert.equal(t.radio.keys.VINSON.TEK[20].tag, 'ETD 11 5AT900 A-1');
   assert.ok(t.radio.todSinc);
   press(t, 'ENT');
   press(t, '9', 'ENT');
@@ -379,7 +383,8 @@ test('HAVEQUICK: MWOD del día UTC, TOD por CALL y contacto', () => {
   sklLogin(t);
   on(t);
   const day = new Date(t.clock.now()).getUTCDate();
-  fillKey(t, 'ETD 50 5AT900', 'HAVEQUICK', 'WOD', day);
+  t.skl.loadExtendedDb();
+  fillKey(t, 'ETD 50 5AT900|A|1', 'HAVEQUICK', 'WOD', day);
   fillEnd(t, 'PT');
   t.conn.j8 = 'FLEX';
   pgmNet(t, 4, 'FREQUENCY HOPPING', 'HAVEQUICK');
@@ -402,7 +407,7 @@ test('SATCOM dedicado: código de 5 kHz limita COMSEC a ANDVT/KG-84, RSSI y cont
   const t = setup();
   sklLogin(t);
   on(t);
-  fillKey(t, 'ETD 31 5AT900', 'ANDVT', 'TEK', 1);
+  fillKey(t, SAT(t), 'ANDVT', 'TEK', 1);
   fillEnd(t, 'PT');
   t.conn.j8 = 'SATCOM';
   pgmNet(t, 5, 'SATCOM');
@@ -449,10 +454,11 @@ test('DAMA: programación, conexión, llamada y errores 77/82', () => {
   const t = setup();
   sklLogin(t);
   on(t);
-  fillKey(t, 'ETD 07 5AT900', 'SATELLITE', 'TSK', 1);
+  t.skl.loadExtendedDb();
+  fillKey(t, 'ETD 07 5AT900|A|1', 'SATELLITE', 'TSK', 1);
   t.radio.setSwitch('PT');
   t.tick(10);
-  fillKey(t, 'ETD 44 5AT900', 'ANDVT', 'TEK', 2);
+  fillKey(t, SAT(t), 'ANDVT', 'TEK', 2);
   fillEnd(t);
   t.conn.j8 = 'SATCOM';
   t.conn.az = SIM.Net.SATELLITE.az;
@@ -537,7 +543,7 @@ test('borrados: Z-ALL (rojos), tecla ZERO (programación) y CLR (todo)', () => {
   const t = setup();
   sklLogin(t);
   on(t);
-  fillKey(t, 'ETD 01 5AT900', 'VINSON', 'TEK', 1);
+  fillKey(t, SAT(t), 'VINSON', 'TEK', 1);
   fillEnd(t, 'PT');
   t.radio.nets[1].name = 'MANDO';
   t.radio.setSwitch('ZALL');
@@ -563,67 +569,75 @@ test('borrados: Z-ALL (rojos), tecla ZERO (programación) y CLR (todo)', () => {
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((x) => x.id === 'zeroize'), t).every((c) => c.ok));
 });
 
-test('SKL: Core Library, orden de salida, bloqueo, CIK, auditoría solo SSO y apagado', () => {
+test('SKL: logon, orden de salida, Reset Card, fallos de logon, auditoría solo SSO y apagado', () => {
   const t = setup();
   sklLogin(t);
+  // árbol Keys: un Short Title con 12 segmentos (uno por mes)
+  t.skl.act('tab', 'KEYS');
+  t.skl.act('toggle', 'st:ETD 01 5AT900');
+  t.skl.act('toggle', 'ed:ETD 01 5AT900|A');
+  const segs = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:'));
+  assert.equal(segs.length, 12);
+  assert.equal(segs[10].label, '11-T000-11-NOV TEK');
+  assert.equal(segs[10].icon, 'YELLOW');
+  assert.equal(segs[0].icon, 'RED');
+  assert.equal(segs[11].icon, 'PENDING');
+  t.skl.act('open', 'seg:' + SAT(t));
+  assert.equal(t.skl.dlg.type, 'SEGMENT');
+  dlg(t, 'Close');
+  // Key Load Settings: Activate Mode depende del Protocol
+  t.skl.act('select', 'seg:' + SAT(t));
+  t.skl.act('cmd', 'load');
+  assert.equal(t.skl.dlg.type, 'KEY_SETTINGS');
+  t.skl.act('dlgField', { fields: { protocol: 'RS-232' } });
+  assert.equal(t.skl.dlg.v.activate, 'RS-232');
+  dlg(t, 'Cancel');
   // no se puede cerrar sesión con la UAS abierta
   t.skl.act('cmd', 'logout');
-  assert.match(t.skl.dlg.text, /Exit the UAS/);
+  assert.match(t.skl.dlg.text, /exit the SKL UAS/);
   dlg(t, 'OK');
   t.skl.act('cmd', 'exit');
   assert.equal(t.skl.win, 'CORELIB');
+  // Reset Card: cierra la sesión pero no borra las claves
+  t.skl.act('cmd', 'resetCard');
+  dlg(t, 'Yes');
+  t.tick(2000);
+  assert.match(t.skl.dlg.text, /Card was reset/);
+  dlg(t, 'OK');
+  assert.equal(t.skl.loggedIn, false);
+  assert.equal(t.skl.keys.length, 12);
+  // 10 fallos de logon seguidos borran la cuenta del usuario
+  t.skl.act('cmd', 'login');
+  for (let i = 0; i < 10; i++) {
+    dlg(t, 'OK', { user: 'OPERADOR', pass: 'x' });
+    dlg(t, 'OK');
+    if (i < 9) assert.equal(t.skl.dlg.type, 'LOGON');
+  }
+  assert.equal(t.skl.accounts.OPERADOR, undefined);
+  // la auditoría requiere SSO
+  t.skl.act('cmd', 'login');
+  dlg(t, 'OK', { user: 'SSO', pass: 'Sso12345' });
+  t.tick(2000);
+  dlg(t, 'OK');
+  assert.equal(t.skl.win, 'UAS');
+  t.skl.act('cmd', 'exit');
+  t.skl.act('cmd', 'viewAudit');
+  assert.equal(t.skl.dlg.type, 'AUDIT');
+  assert.ok(t.skl.audit.some((a) => /deleted \(10 consecutive/.test(a.text)));
+  dlg(t, 'OK');
   t.skl.act('cmd', 'logout');
   t.tick(2000);
   assert.equal(t.skl.kov, 'OFF');
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((x) => x.id === 'skl-init'), t).every((c) => c.ok));
-  // tres contraseñas erróneas bloquean la cuenta
-  t.skl.act('cmd', 'login');
-  for (let i = 0; i < 3; i++) {
-    dlg(t, 'OK', { user: 'OPERADOR', pass: 'x' });
-    if (i < 2) dlg(t, 'OK');
-  }
-  assert.ok(t.skl.locked);
-  dlg(t, 'Desbloqueo (instructor)');
-  assert.equal(t.skl.dlg.type, 'LOGIN');
-  dlg(t, 'OK', { user: 'operador', pass: 'Operador1' });
-  t.tick(2000);
-  dlg(t, 'OK'); // Startup Information
-  assert.equal(t.skl.win, 'UAS');
-  // la auditoría requiere SSO
-  t.skl.act('cmd', 'viewAudit');
-  assert.match(t.skl.dlg.text, /SSO privileges/);
-  dlg(t, 'OK');
-  // CIK con el equipo encendido: alarma y cierre de sesión
-  t.conn.cik = false;
-  t.skl.cikChanged();
-  assert.equal(t.skl.loggedIn, false);
-  dlg(t, 'OK');
-  t.skl.powerButton();
-  t.tick(11000); // cuenta atrás de apagado
-  assert.equal(t.skl.power, false);
-  t.conn.cik = true;
-  t.skl.powerButton();
-  t.tick(2500);
-  dlg(t, 'OK', { user: 'SSO', pass: SSO_PASS });
-  t.tick(2000);
-  dlg(t, 'OK');
-  t.skl.act('cmd', 'viewAudit');
-  assert.equal(t.skl.dlg.type, 'AUDIT');
-  assert.ok(t.skl.audit.some((a) => /Alarm/.test(a.text)));
-  dlg(t, 'OK');
   // el apagado se puede abortar pulsando de nuevo el botón
   t.skl.powerButton();
   t.tick(3000);
   t.skl.powerButton();
   t.tick(10000);
   assert.equal(t.skl.power, true);
-  // árbol de la pestaña Keys y diálogo Segment
-  t.skl.act('tab', 'KEYS');
-  t.skl.act('toggle', 'st:ETD 01 5AT900');
-  t.skl.act('toggle', 'ed:ETD 01 5AT900');
-  assert.ok(t.skl.visibleNodes().some((n) => n.label === '1-T000-1-LOS TEK'));
-  t.skl.act('open', 'seg:ETD 01 5AT900');
-  assert.equal(t.skl.dlg.type, 'SEGMENT');
+  t.skl.powerButton();
+  t.tick(11000);
+  assert.equal(t.skl.power, false);
 });
 
 test('serialización de la radio y del SKL', () => {
@@ -638,6 +652,8 @@ test('serialización de la radio y del SKL', () => {
   assert.deepEqual(t2.radio.damaNets[2].guard, [51234]);
   t.skl.keys = t.skl.keys.slice(0, 2);
   t.skl.card = 'READY';
+  t.skl.loadExtendedDb();
+  t.skl.keys = t.skl.keys.slice(0, 2);
   t2.skl.load(JSON.parse(JSON.stringify(t.skl.serialize())));
   assert.equal(t2.skl.keys.length, 2);
   assert.equal(t2.skl.card, 'READY');

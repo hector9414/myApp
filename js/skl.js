@@ -1,58 +1,78 @@
 /*
  * Modelo del Simple Key Loader AN/PYQ-10 (simulación de entrenamiento).
  *
- * Reproduce la interfaz Windows CE del curso del SKL (Manuals/):
- *   - Escritorio, barra de tareas (inicio, programa activo, batería, fecha) y
- *     menú Inicio (Programs > calibrate, CoreLib, SKL Settings).
- *   - Core Library: menús Session / Tools / Launch / Help, inicialización de
- *     la tarjeta INFOSEC (Default SSO Login con DEFAULTPIN, emparejado del
- *     KOV-21, «Use External CIK?», Change Password) e inicio de sesión.
- *   - UAS (se abre automáticamente tras iniciar sesión): menús File / View /
- *     Settings, iconos RECV y LOAD, pestañas Plats / Eqs / Keys / SOI en árbol.
- *   - Carga de claves: Protocol DS-101 / DS-102 y Activation Mode KYK-13,
- *     «Ready to Send Key», ventana Status con «Press INITIATE Button…».
- *   - Loadset SINCGARS por ICOM (SINCGARS Mode, Load ECU Wizard).
- *   - Expired Keys, Segment (información de clave), Summary Status,
- *     AUDIT TRAIL (solo SSO), apagado con cuenta atrás de 10 s, KOV, zeroize.
+ * Reproduce la interfaz Windows CE descrita en el manual técnico
+ * TM 11-5810-410-13&P (PYQ10_tech_20070901) y en el curso del SKL:
+ *   - Core Library: ventana «Logon» (User ID / Password, Clear / Cancel / OK)
+ *     con Input Panel; menús Session (Login, Logout, Protocol, Reset Card),
+ *     Tools (User ▸ / SSO ▸), Launch y Help. Tras un logon válido la UAS
+ *     se abre automáticamente («Startup Information» > OK).
+ *   - El CIK va insertado en el SKL (no se retira en los procedimientos).
+ *   - UAS: menús File / View / Settings, iconos RECV y LOAD, pestañas
+ *     Plats / Eqs / Keys / SOI en árbol (Short Title > Edition > Segment).
+ *   - Carga de claves: File > Transmit > Load Selected Keys > «Key Load
+ *     Select Keys» > «Key Load Settings» (Protocol, Activate Mode, Bus
+ *     Address, Baud Rate, Send WakeUp, Send Tag, Seconds, Mode, Timeout) >
+ *     «Ready to Send Key» (Connect to Receive Equipment) > «Status»
+ *     («Press INITIATE Button....») > «Operation Successful.».
+ *   - Loadset por ICOM: SINCGARS Mode > Load ECU Wizard (Connect To,
+ *     Profiles) > Status («Press LOAD Button.») > «Re-load equipment?».
  *
- * Todas las claves son ficticias (designación ETD de entrenamiento).
+ * La base de datos por defecto contiene un único Short Title SATCOM con
+ * 12 segmentos (uno por mes). Todo el material es ficticio (ETD).
  */
 (function (g) {
   'use strict';
   const SIM = g.SIM;
   const DAY = 86400000;
-  const MAX_ATTEMPTS = 3;
+  const MAX_FAILS = 10; // manual: 10 fallos seguidos borran la cuenta (SSO: zeroize)
   const ACCOUNT = '5AT900'; // cuenta COMSEC ficticia
+  const SAT_ST = `ETD 01 ${ACCOUNT}`;
+  const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-  function mk(now, st, desig, suffix, text, bank, type, desc, effD, expD, extra) {
+  /** Etiqueta con la que la radio identifica un segmento: «ETD 01 5AT900 A-11». */
+  const tagOf = (st, ed, seg) => `${st} ${ed}-${seg}`;
+  /** Segmento SATCOM vigente en una fecha (uno por mes). */
+  SIM.satcomTag = (t) => tagOf(SAT_ST, 'A', new Date(t).getMonth() + 1);
+
+  function seg(o) {
     return Object.assign({
-      id: st, tag: st, edition: 'A', segment: 1, desig, suffix, text, bank, type, desc,
-      eff: now + effD * DAY, exp: now + expD * DAY, variable: true, issued: 0,
-      source: 'KOK-22(KP)', cls: 'Unclassified',
-    }, extra || {});
+      edition: 'A', segment: 1, variable: true, issued: 0, source: 'KOK-22(KP)', cls: 'Unclassified',
+    }, o, { id: `${o.st}|${o.edition || 'A'}|${o.segment || 1}`, tag: tagOf(o.st, o.edition || 'A', o.segment || 1) });
   }
 
+  /** Base de datos por defecto: un Short Title SATCOM con 12 segmentos (ENE-DIC del año en curso). */
   function defaultKeys(now) {
+    const y = new Date(now).getFullYear();
+    return MONTHS.map((m, i) => seg({
+      st: SAT_ST, segment: i + 1, desig: 'T000', suffix: String(i + 1), text: `${m} TEK`, bank: 'SATCOM', type: 'TEK',
+      desc: `TEK SATCOM del mes ${m} (VINSON / ANDVT)`,
+      eff: new Date(y, i, 1).getTime(), exp: new Date(y, i + 1, 1).getTime() - 1,
+    }));
+  }
+
+  /** Material adicional para los demás ejercicios (botón del instructor). */
+  function extendedKeys(now) {
+    const d = (n) => now + n * DAY;
     return [
-      mk(now, `ETD 01 ${ACCOUNT}`, 'T000', '1', 'LOS TEK', 'VINSON', 'TEK', 'Red LOS de Cóndor 3 (VINSON)', -10, 20),
-      mk(now, `ETD 02 ${ACCOUNT}`, 'T000', '2', 'OLD TEK', 'VINSON', 'TEK', 'Red LOS, periodo anterior', -40, -2),
-      mk(now, `ETD 31 ${ACCOUNT}`, 'T000', '31', 'SAT TEK', 'ANDVT', 'TEK', 'SATCOM dedicado 5 kHz (Base Centauro)', -7, 23),
-      mk(now, `ETD 44 ${ACCOUNT}`, 'T000', '44', 'DAMA TEK', 'ANDVT', 'TEK', 'DAMA (Nodo Orión)', -7, 23),
-      mk(now, `ETD 07 ${ACCOUNT}`, 'S000', '7', 'EOW TSK', 'SATELLITE', 'TSK', 'Orderwire DAMA', -7, 23),
-      mk(now, `ETD 50 ${ACCOUNT}`, 'W000', '11', 'MWOD', 'HAVEQUICK', 'WOD', 'MWOD HAVEQUICK del mes', -10, 30),
-      mk(now, `ETD 60 ${ACCOUNT}`, 'T000', '60', 'DATA TEK', 'KG-84', 'TEK', 'KG-84 (falta la variable)', -1, 29, { variable: false }),
-      mk(now, `ETD 04 ${ACCOUNT}`, 'KAAA', '3', '1QTR KEK', 'VINSON', 'KEK', 'KEK VINSON', -30, 60),
+      seg({ st: `ETD 02 ${ACCOUNT}`, desig: 'T000', suffix: '2', text: 'LOS TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS de Cóndor 3 (VINSON)', eff: d(-10), exp: d(20) }),
+      seg({ st: `ETD 03 ${ACCOUNT}`, desig: 'T000', suffix: '3', text: 'OLD TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS, periodo anterior', eff: d(-40), exp: d(-2) }),
+      seg({ st: `ETD 07 ${ACCOUNT}`, desig: 'S000', suffix: '7', text: 'EOW TSK', bank: 'SATELLITE', type: 'TSK', desc: 'Orderwire DAMA', eff: d(-7), exp: d(23) }),
+      seg({ st: `ETD 50 ${ACCOUNT}`, desig: 'W000', suffix: '11', text: 'MWOD', bank: 'HAVEQUICK', type: 'WOD', desc: 'MWOD HAVEQUICK del mes', eff: d(-10), exp: d(30) }),
+      seg({ st: `ETD 60 ${ACCOUNT}`, desig: 'T000', suffix: '60', text: 'DATA TEK', bank: 'KG-84', type: 'TEK', desc: 'KG-84 (falta la variable)', eff: d(-1), exp: d(29), variable: false }),
+      seg({ st: `ETD 04 ${ACCOUNT}`, desig: 'KAAA', suffix: '3', text: '1QTR KEK', bank: 'VINSON', type: 'KEK', desc: 'KEK VINSON', eff: d(-30), exp: d(60) }),
     ];
   }
 
-  function defaultLoadset() {
+  function extendedLoadset() {
     return {
-      name: 'SINCGARS',
-      type: 'RT-1523',
-      teks: [11, 12, 13, 14, 15].map((n) => `ETD ${n} ${ACCOUNT}`),
-      kek: `ETD 16 ${ACCOUNT}`,
-      coldStart: `ETD 20 ${ACCOUNT}`,
-      hopsets: [345, 346, 400, 401, 500, 501].map((netId, i) => ({ tag: `ETD ${21 + i} ${ACCOUNT}`, netId })),
+      name: 'RT1 PRC117F',
+      type: 'PRC-117F',
+      platform: 'CDR HMMV',
+      teks: [11, 12, 13, 14, 15].map((n) => `ETD ${n} ${ACCOUNT} A-1`),
+      kek: `ETD 16 ${ACCOUNT} A-1`,
+      coldStart: `ETD 20 ${ACCOUNT} A-1`,
+      hopsets: [345, 346, 400, 401, 500, 501].map((netId, i) => ({ tag: `ETD ${21 + i} ${ACCOUNT} A-1`, netId })),
     };
   }
 
@@ -74,6 +94,17 @@
     const d = new Date(t);
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
   };
+  const fmtKeyDate = (t) => {
+    const d = new Date(t);
+    return `${SIM.pad(d.getMonth() + 1)}/${SIM.pad(d.getDate())}/${d.getFullYear()}`;
+  };
+
+  /** Opciones de «Activate Mode» del diálogo Key Load Settings (manual, figuras 34-36). */
+  const ACTIVATE = {
+    'DS-102': ['DS-102', 'KYK-13', 'KYX-15', 'KEMPLE', 'KOI-18', 'NCD LD'],
+    'DS-101': ['DS-101'],
+    'RS-232': ['RS-232', 'STE'],
+  };
 
   class SKL extends SIM.Device {
     /** env.cik() -> bool ; env.pushLoadset(ls, includeTime) -> { ok, reason } */
@@ -93,25 +124,25 @@
       this.menu = null;
       this.startMenu = false;
       this.switcher = false;
+      this.sip = false; // Input Panel (teclado en pantalla)
       this.user = null;
       this.uasOpen = false;
       this.tab = 'PLATS';
       this.sel = { PLATS: null, EQS: null, KEYS: null, SOI: null };
-      this.expanded = new Set(['soi:ed', 'soi:grp', 'soi:g1', 'soi:tp1', 'plat:VEH MANDO', 'eq:SINCGARS']);
-      this.card = 'UNINIT';
-      this.ssoPass = null;
-      this.users = { OPERADOR: { pass: 'Operador1' } };
-      this.attempts = 0;
-      this.locked = false;
+      this.expanded = new Set(['soi:ed', 'soi:grp', 'soi:g1', 'soi:tp1']);
+      this.card = 'READY';
+      this.accounts = { SSO: { pass: 'Sso12345', fails: 0, role: 'SSO' }, OPERADOR: { pass: 'Operador1', fails: 0, role: 'USER' } };
       this.kov = 'OFF';
       this.battery = 100;
       this.nvg = false;
       this.bright = 3;
       this.keys = defaultKeys(this.env.now());
-      this.loadset = defaultLoadset();
+      this.loadset = null;
+      this.extended = false;
       this.audit = [];
-      this.protocol = 'DS-102';
-      this.activation = 'KYK-13';
+      this.loadSettings = { protocol: 'DS-102', activate: 'DS-102', bus: '255', baud: '2400', wakeup: false, tag: false, seconds: '5', mode: 'Fill', timeout: 'Slow' };
+      this.coreProtocol = { protocol: 'DS-101', baud: '2400', timeout: 'Medium' };
+      this.displayEvery = true;
       this.send = null;
       this.icom = null;
       this.dirty = false;
@@ -119,6 +150,18 @@
       this.shutdown = null;
       this.lowWarnAt = 0;
       this.log('Audit Trail Initialized.');
+      this.changed();
+    }
+
+    /** Añade el material de los demás ejercicios (LOS, DAMA TSK, MWOD y loadset SINCGARS). */
+    loadExtendedDb() {
+      if (this.extended) return;
+      const ids = new Set(this.keys.map((k) => k.id));
+      extendedKeys(this.env.now()).forEach((k) => { if (!ids.has(k.id)) this.keys.push(k); });
+      this.loadset = extendedLoadset();
+      this.extended = true;
+      this.expanded.add('plat:CDR HMMV');
+      this.log('Database received (training material).');
       this.changed();
     }
 
@@ -157,9 +200,11 @@
       this.menu = null;
       this.startMenu = false;
       this.switcher = false;
+      if (['LOGON', 'CHANGE_PW'].includes(d.type)) this.sip = true;
     }
     pop() {
-      this.dialogs.pop();
+      const d = this.dialogs.pop();
+      if (d && ['LOGON', 'CHANGE_PW'].includes(d.type)) this.sip = false;
     }
     /** Cuadro de mensaje estilo Windows CE. */
     msgBox(title, text, icon = 'i', next, buttons = ['OK']) {
@@ -182,7 +227,6 @@
     powerButton() {
       if (!this.power) return this.powerOn();
       if (this.shutdown) {
-        // abortar el apagado
         this.clearShutdown();
         return this.changed();
       }
@@ -212,7 +256,7 @@
       this.changed();
       this.after(2000, () => {
         this.booted = true;
-        this.win = 'CORELIB';
+        this.win = 'CORELIB'; // la Core Library arranca sola al encender
         this.startCoreLib();
         this.changed();
       });
@@ -223,9 +267,8 @@
         this.msgBox('Core Lib', 'No CIK detected. Turn the SKL off, insert the CIK and turn it on again.', '!');
         return;
       }
-      if (this.locked) return this.msgBox('Core Lib', 'Max logon attempts. The account is locked.', '!', null, ['OK', 'Desbloqueo (instructor)']);
       if (this.card === 'UNINIT') this.push({ type: 'DEFAULT_SSO' });
-      else this.push({ type: 'LOGIN' });
+      else this.push({ type: 'LOGON' });
     }
 
     powerOff() {
@@ -239,25 +282,11 @@
       this.icom = null;
       this.dialogs = [];
       this.menu = null;
+      this.sip = false;
       this.progress = null;
       this.shutdown = null;
       this.kov = 'OFF';
       this.win = 'DESKTOP';
-      this.changed();
-    }
-
-    /** Se insertó o retiró el CIK. */
-    cikChanged() {
-      if (!this.power) return;
-      this.log('Alarm: CIK removed/inserted while powered.', false);
-      this.user = null;
-      this.uasOpen = false;
-      this.send = null;
-      this.icom = null;
-      this.dialogs = [];
-      this.kov = 'OFF';
-      this.win = 'CORELIB';
-      this.msgBox('Core Lib', 'CIK change detected. Insert or remove the CIK only while the SKL is turned off.', '!');
       this.changed();
     }
 
@@ -281,8 +310,8 @@
       this.changed();
     }
 
-    /** Botón físico de zeroize: borra las claves y pone a cero la tarjeta KOV-21. */
-    zeroize() {
+    /** Botón físico de zeroize (o 10 fallos de logon del SSO): borra todo y la tarjeta queda sin inicializar. */
+    zeroize(reason = 'Zeroize button') {
       if (!this.power) return;
       const n = this.keys.length;
       this.keys = [];
@@ -292,11 +321,13 @@
       this.user = null;
       this.uasOpen = false;
       this.card = 'UNINIT';
+      this.accounts = { SSO: { pass: 'DEFAULTPIN', fails: 0, role: 'SSO' } };
       this.kov = 'OFF';
       this.dialogs = [];
+      this.sip = false;
       this.win = 'CORELIB';
-      this.log(`INFOSEC zeroized (${n} keys).`);
-      this.msgBox('Core Lib', 'INFOSEC card zeroized. All key material has been deleted.', '!', () => this.startCoreLib());
+      this.log(`INFOSEC zeroized (${reason}, ${n} segments).`);
+      this.msgBox('Core Lib', 'INFOSEC card zeroized. All Mission Database items and user accounts have been deleted.', '!', () => this.startCoreLib());
       this.changed();
     }
 
@@ -317,6 +348,9 @@
       this.switcher = !this.switcher;
       this.startMenu = false;
       this.menu = null;
+    }
+    a_sip() {
+      this.sip = !this.sip;
     }
     a_focus(w) {
       this.startMenu = false;
@@ -350,6 +384,22 @@
       const fn = this['d_' + d.type];
       if (fn) fn.call(this, arg.btn, arg.fields || {}, d);
     }
+    /** Cambios en vivo dentro de un diálogo (p. ej. Protocol en Key Load Settings). */
+    a_dlgField(arg) {
+      const d = this.dlg;
+      if (!d) return;
+      if (d.type === 'KEY_SETTINGS') {
+        Object.assign(d.v, arg.fields || {});
+        if (!ACTIVATE[d.v.protocol].includes(d.v.activate)) d.v.activate = ACTIVATE[d.v.protocol][0];
+        if (d.v.protocol !== 'DS-101') d.v.wakeup = false;
+      }
+      if (d.type === 'SINC_MODE') Object.assign(d.v, arg.fields || {});
+      if (d.type === 'KEY_SELECT') d.checked = [].concat((arg.fields && arg.fields.keys) || []);
+    }
+    a_dlgFocus(id) {
+      const d = this.dlg;
+      if (d && d.type === 'KEY_SELECT') d.focus = id;
+    }
     a_tab(t) {
       if (['PLATS', 'EQS', 'KEYS', 'SOI'].includes(t)) this.tab = t;
       this.menu = null;
@@ -366,7 +416,7 @@
     a_open(id) {
       this.sel[this.tab] = id;
       const k = this.keyFromNode(id);
-      if (k) return this.showSegment(k);
+      if (k && /^seg:/.test(id)) return this.showSegment(k);
       this.a_toggle(id);
     }
     /** Botones físicos: 1-4, cruceta y brillo. */
@@ -405,27 +455,27 @@
     tree(tab = this.tab) {
       const N = (id, label, icon, children, extra) => Object.assign({ id, label, icon, children: children || [] }, extra || {});
       if (tab === 'KEYS') {
-        return this.keys.map((k) => N(`st:${k.id}`, k.tag, 'st', [
-          N(`ed:${k.id}`, k.edition, 'ed', [N(`seg:${k.id}`, this.segLabel(k), this.keyStatus(k), [], { key: k.id })]),
-        ]));
+        // Short Title > Edition > Segment (manual: «Key Knowledge»)
+        const byST = new Map();
+        this.keys.forEach((k) => {
+          if (!byST.has(k.st)) byST.set(k.st, new Map());
+          const eds = byST.get(k.st);
+          if (!eds.has(k.edition)) eds.set(k.edition, []);
+          eds.get(k.edition).push(k);
+        });
+        return [...byST.entries()].map(([st, eds]) => N(`st:${st}`, st, 'st', [...eds.entries()].map(([ed, segs]) => N(`ed:${st}|${ed}`, ed, 'ed',
+          segs.map((k) => N(`seg:${k.id}`, this.segLabel(k), this.keyStatus(k), [], { key: k.id }))))));
       }
       const ls = this.loadset;
-      const lsNode = (prefix) => (ls ? N(`${prefix}:SINCGARS`, 'SINCGARS', 'eq', [
+      const lsNode = (prefix) => (ls ? N(`${prefix}:eq`, ls.name, 'eq', [
         ...ls.teks.map((t, i) => N(`${prefix}:loc:C${i + 1}`, `C${i + 1}`, 'loc', [N(`${prefix}:k:C${i + 1}`, `${t} TEK`, 'YELLOW')])),
         N(`${prefix}:loc:C6`, 'C6', 'loc', [N(`${prefix}:k:C6`, `${ls.kek} KEK`, 'YELLOW')]),
         N(`${prefix}:loc:H0`, 'H0', 'loc'),
         ...ls.hopsets.map((h, i) => N(`${prefix}:loc:H${i + 1}`, `H${i + 1}`, 'loc', [N(`${prefix}:h:${i}`, `F${SIM.pad(h.netId, 3)}`, 'hop')])),
       ], { loadset: true }) : null);
-      if (tab === 'EQS') {
-        return [lsNode('eq'), N('eq:RT1 PRC117F', 'RT1 PRC117F', 'eq', [N('eq:RT1 PRC117F:loc', 'J1 ADF', 'loc')])].filter(Boolean);
-      }
-      if (tab === 'PLATS') {
-        return [
-          N('plat:VEH MANDO', 'VEH MANDO', 'plat', [lsNode('pe'), N('pe:RT1 PRC117F', 'RT1 PRC117F', 'eq')].filter(Boolean)),
-          N('plat:TOC', 'BDE TOC', 'plat'),
-        ];
-      }
-      // SOI: edición, grupo, periodos, pirotecnia, humos y referencia rápida
+      if (tab === 'EQS') return [lsNode('eq')].filter(Boolean);
+      if (tab === 'PLATS') return ls ? [N(`plat:${ls.platform}`, ls.platform, 'plat', [lsNode('pe')])] : [];
+      // SOI
       const st = SIM.Net ? SIM.Net.STATIONS : [];
       const sat = SIM.Net ? SIM.Net.SATELLITE : { name: '', az: 0, el: 0 };
       return [
@@ -441,6 +491,7 @@
         N('soi:qr', 'Quick Reference', 'soi', [
           N('soi:qr:sat', `SAT ${sat.name}: AZ ${sat.az} EL ${sat.el}`, 'soiitem'),
           N('soi:qr:codes', 'SATCOM CODES: 009-128 25K, 129-239 5K', 'soiitem'),
+          N('soi:qr:key', `SATCOM TEK: ${SAT_ST} (SEGMENT = MONTH)`, 'soiitem'),
         ]),
       ];
     }
@@ -455,23 +506,26 @@
     }
     keyFromNode(id) {
       if (!id) return null;
-      const m = /^(st|ed|seg):(.+)$/.exec(id);
-      return m ? this.keyById(m[2]) : null;
+      let m = /^seg:(.+)$/.exec(id);
+      if (m) return this.keyById(m[1]);
+      m = /^ed:(.+)\|(.+)$/.exec(id);
+      if (m) return this.keys.find((k) => k.st === m[1] && k.edition === m[2]) || null;
+      m = /^st:(.+)$/.exec(id);
+      if (m) return this.keys.find((k) => k.st === m[1]) || null;
+      return null;
+    }
+    selectedKind() {
+      const id = this.sel[this.tab] || '';
+      return id.split(':')[0];
     }
     selectedIsLoadset() {
       const id = this.sel[this.tab] || '';
-      return (this.tab === 'PLATS' || this.tab === 'EQS') && /SINCGARS/.test(id) && !!this.loadset;
+      return (this.tab === 'PLATS' || this.tab === 'EQS') && !!this.loadset && /^(plat|pe|eq)/.test(id);
     }
 
     // ---------------------------------------------------------------- diálogos
     d_MSG(btn, f, d) {
       this.pop();
-      if (btn === 'Desbloqueo (instructor)') {
-        this.locked = false;
-        this.attempts = 0;
-        this.log('Account unlocked (instructor).');
-        return this.startCoreLib();
-      }
       if (d.next) d.next(btn);
     }
     d_LOWBAT() {
@@ -483,60 +537,60 @@
         this.pop();
         this.log('SSO created.');
         this.msgBox('Core Lib', 'INFOSEC Card Serial Number KOV-21 0020705 has been paired with this Host PC. logon will continue', 'i', () => {
-          this.push({ type: 'MSG', title: 'Core Lib', text: 'Use External CIK?', icon: '?', buttons: ['OK'], next: () => this.push({ type: 'CHANGE_PW', userId: 'SSO', init: true }) });
+          this.push({
+            type: 'MSG', title: 'Core Lib', text: 'Use External CIK?', icon: '?', buttons: ['OK'],
+            next: () => {
+              this.card = 'READY';
+              this.accounts = { SSO: { pass: 'Sso12345', fails: 0, role: 'SSO' }, OPERADOR: { pass: 'Operador1', fails: 0, role: 'USER' } };
+              this.logon('SSO');
+            },
+          });
         });
         return;
       }
       this.log('Unsuccessful SSO logon attempt.', false);
-      this.msgBox('Core Lib', 'Invalid user ID or password.', '!');
+      this.msgBox('Core Lib', 'Invalid User ID or Password.', '!');
+    }
+    d_LOGON(btn, f) {
+      if (btn !== 'OK') return this.pop();
+      const name = String(f.user || '').trim();
+      const acc = this.accounts[name.toUpperCase()];
+      if (acc && f.pass === acc.pass) {
+        this.pop();
+        acc.fails = 0;
+        return this.logon(name.toUpperCase());
+      }
+      if (acc) acc.fails++;
+      const label = name.toUpperCase() === 'SSO' ? 'SSO' : `User (${name || '?'})`;
+      this.log(`Unsuccessful ${label} logon attempt.`, false);
+      if (acc && acc.fails >= MAX_FAILS) {
+        this.pop();
+        if (acc.role === 'SSO') return this.zeroize('10 consecutive SSO logon failures');
+        delete this.accounts[name.toUpperCase()];
+        this.log(`${label} deleted (10 consecutive logon failures).`, false);
+        return this.msgBox('Core Lib', 'Ten consecutive logon failures. The user account has been deleted.', '!');
+      }
+      this.msgBox('Core Lib', 'Invalid User ID or Password.', '!');
+    }
+    /** Logon correcto: KOV en verde, Startup Information y la UAS se abre sola. */
+    logon(name) {
+      const acc = this.accounts[name];
+      this.user = { name, role: acc ? acc.role : 'USER' };
+      this.kov = 'GREEN';
+      this.log(name === 'SSO' ? 'SSO Logged on.' : `User (${name}) Logged on.`);
+      this.showProgress('Please wait, checking and decrypting database in progress...', 1800, () => this.push({ type: 'STARTUP', autoUAS: true }));
     }
     d_CHANGE_PW(btn, f, d) {
-      if (btn === 'Cancel') {
-        this.pop();
-        if (d.init) this.startCoreLib();
-        return;
-      }
+      if (btn === 'Cancel') return this.pop();
       if (btn !== 'OK') return;
-      const current = d.userId === 'SSO' ? (d.init ? 'DEFAULTPIN' : this.ssoPass) : this.users[d.userId] && this.users[d.userId].pass;
-      if (f.old !== current) return this.msgBox('Core Lib', 'Old password is incorrect.', '!');
-      if (!f.new || f.new.length < 8 || !/[A-Za-z]/.test(f.new) || !/[0-9]/.test(f.new)) return this.msgBox('Core Lib', 'The new password must have at least 8 characters, letters and numbers.', '!');
+      const acc = this.accounts[d.userId];
+      if (!acc || f.old !== acc.pass) return this.msgBox('Core Lib', 'Old password is incorrect.', '!');
+      if (!f.new || f.new.length < 6 || f.new.length > 12 || /\s/.test(f.new)) return this.msgBox('Core Lib', 'The new password must be 6 to 12 characters long. Spaces are not allowed.', '!');
       if (f.new !== f.confirm) return this.msgBox('Core Lib', 'New password and confirmation do not match.', '!');
       this.pop();
-      if (d.userId === 'SSO') this.ssoPass = f.new;
-      else this.users[d.userId].pass = f.new;
-      this.log(`${d.userId} password changed.`);
-      this.msgBox('Core Lib', 'Password successfully updated.', 'i', () => {
-        if (!d.init) return;
-        this.card = 'READY';
-        this.user = { name: 'SSO', role: 'SSO' };
-        this.kov = 'GREEN';
-        this.log('SSO Logged on.');
-        this.showProgress('Please wait, encrypting and saving database in progress...', 1800, () => this.push({ type: 'STARTUP', autoUAS: true }));
-      });
-    }
-    d_LOGIN(btn, f) {
-      if (btn !== 'OK') return this.pop();
-      const name = String(f.user || '').trim().toUpperCase();
-      const ok = name === 'SSO' ? f.pass === this.ssoPass && !!this.ssoPass : !!this.users[name] && this.users[name].pass === f.pass;
-      if (ok) {
-        this.pop();
-        this.attempts = 0;
-        this.user = { name, role: name === 'SSO' ? 'SSO' : 'USER' };
-        this.kov = 'GREEN';
-        this.log(name === 'SSO' ? 'SSO Logged on.' : `User (${name}) Logged on.`);
-        // la UAS se lanza automáticamente al iniciar sesión
-        this.showProgress('Please wait, checking and decrypting database in progress...', 1800, () => this.push({ type: 'STARTUP', autoUAS: true }));
-        return;
-      }
-      this.attempts++;
-      this.log(name === 'SSO' ? 'Unsuccessful SSO logon attempt.' : `Unsuccessful User logon attempt (${name || '?'}).`, false);
-      if (this.attempts >= MAX_ATTEMPTS) {
-        this.locked = true;
-        this.pop();
-        this.log(name === 'SSO' ? 'SSO Max logon attempts.' : 'User Max logon attempts.', false);
-        return this.msgBox('Core Lib', 'Max logon attempts. The account is locked.', '!', null, ['OK', 'Desbloqueo (instructor)']);
-      }
-      this.msgBox('Core Lib', `Invalid user ID or password. ${MAX_ATTEMPTS - this.attempts} attempt(s) left.`, '!');
+      acc.pass = f.new;
+      this.log(`${d.userId === 'SSO' ? 'SSO' : `User (${d.userId})`} password changed.`);
+      this.msgBox('Core Lib', 'Password successfully updated.', 'i');
     }
     d_STARTUP(btn, f, d) {
       this.pop();
@@ -548,10 +602,18 @@
     }
     d_PROTOCOL(btn, f) {
       this.pop();
-      if (btn === 'OK' && (f.protocol === 'DS-101' || f.protocol === 'DS-102')) {
-        this.protocol = f.protocol;
-        this.log(`Default fill protocol: ${f.protocol}.`);
+      if (btn === 'OK') {
+        Object.assign(this.coreProtocol, f);
+        this.log(`Core Library protocol: ${this.coreProtocol.protocol}.`);
       }
+    }
+    d_RESET_CARD(btn) {
+      this.pop();
+      if (btn !== 'Yes') return;
+      this.user = null;
+      this.kov = 'OFF';
+      this.log('INFOSEC card reset.');
+      this.showProgress('Resetting card...', 1500, () => this.msgBox('Core Lib', 'Card was reset. User logged off.\nTo continue, please log on.', 'i'));
     }
     d_GET_TIME(btn, f) {
       this.pop();
@@ -587,44 +649,68 @@
       if (!chosen.length) return this.msgBox('SKL', 'Select the expired key(s) to delete.', '!');
       this.confirm('SKL', 'Delete selected Segments?', () => {
         this.keys = this.keys.filter((k) => !chosen.includes(k.id));
-        chosen.forEach((id) => this.log(`Key zeroized: ${id}.`));
+        chosen.forEach((id) => this.log(`Segment zeroized: ${id.replace(/\|/g, ' ')}.`));
         this.dirty = true;
         this.msgBox('SKL', 'Selected expired key(s) deleted.', '!');
       });
     }
-    d_LOAD_SEL(btn, f) {
-      if (btn !== 'OK') return this.pop();
-      const chosen = [].concat(f.keys || []).filter((id) => this.keyById(id));
+    d_KEY_SELECT(btn, f, d) {
+      if (btn === 'Cancel') return this.pop();
+      const selectable = this.keys.filter((k) => this.keyStatus(k) !== 'TAG' && this.keyStatus(k) !== 'EXPTAG');
+      if (btn === 'Select All') {
+        d.checked = selectable.map((k) => k.id);
+        return;
+      }
+      if (btn === 'Deselect All') {
+        d.checked = [];
+        return;
+      }
+      if (btn === 'Up' || btn === 'Down') {
+        const id = d.focus;
+        const i = d.order.indexOf(id);
+        const j = btn === 'Up' ? i - 1 : i + 1;
+        if (i >= 0 && j >= 0 && j < d.order.length) [d.order[i], d.order[j]] = [d.order[j], d.order[i]];
+        return;
+      }
+      if (btn !== 'OK') return;
+      const chosen = d.order.filter((id) => [].concat(f.keys || []).includes(id));
       if (!chosen.length) return this.msgBox('SKL', 'Select at least one key.', '!');
       this.pop();
       this.startKeyLoad(chosen);
     }
-    d_LOAD_OPTS(btn, f, d) {
+    d_KEY_SETTINGS(btn, f, d) {
       if (btn !== 'OK') {
         this.pop();
         this.send = null;
         return;
       }
-      if (f.protocol === 'DS-101' || f.protocol === 'DS-102') this.protocol = f.protocol;
-      if (f.activation) this.activation = f.activation;
+      Object.assign(d.v, f);
+      this.loadSettings = Object.assign({}, d.v);
       this.pop();
-      this.send = { queue: d.queue, idx: 0, stage: 'READY', protocol: this.protocol, activation: this.protocol === 'DS-102' ? this.activation : 'DS-101', lines: [] };
-      this.push({ type: 'READY' });
+      this.send = { queue: d.queue, idx: 0, stage: 'READY', settings: Object.assign({}, d.v), lines: [] };
+      this.nextKeyStep();
     }
-    d_READY(btn) {
+    nextKeyStep() {
+      if (this.displayEvery) this.push({ type: 'READY' });
+      else this.beginWait();
+    }
+    d_READY(btn, f) {
       this.pop();
       if (btn !== 'OK' || !this.send) {
         if (this.send) this.log('Key transfer cancelled.', false);
         this.send = null;
         return;
       }
-      const k = this.currentSendKey();
+      this.displayEvery = !!f.every;
+      this.beginWait();
+    }
+    beginWait() {
       this.send.stage = 'WAIT';
-      this.send.lines.push('Initializing Fill Port…', `Key: ${k.tag} (${this.segLabel(k)})`, 'Press INITIATE Button…');
-      this.push({ type: 'STATUS', kind: 'KEY' });
+      this.send.lines = [this.send.settings.protocol === 'DS-101' ? 'Attempting to Connect .....' : 'Press INITIATE Button....'];
+      if (!this.dialogs.some((d) => d.type === 'STATUS')) this.push({ type: 'STATUS', kind: 'KEY', done: false });
     }
     d_STATUS(btn, f, d) {
-      if (btn !== 'Cancel') return;
+      if (btn !== 'Cancel' && btn !== 'Close') return;
       this.pop();
       if (d.kind === 'KEY' && this.send) {
         this.log('Key transfer cancelled.', false);
@@ -632,14 +718,15 @@
       }
       if (d.kind === 'ICOM') this.icom = null;
     }
-    d_SINC_MODE(btn, f) {
-      this.pop();
+    d_SINC_MODE(btn, f, d) {
       if (btn !== 'OK') {
+        this.pop();
         this.icom = null;
         return;
       }
-      this.icom.transfer = f.transfer || 'ICOM';
-      this.icom.includeTime = !!f.sendTime;
+      this.pop();
+      this.icom.transfer = f.transfer || d.v.transfer;
+      this.icom.includeTime = this.icom.transfer === 'ICOM' && !!f.includeTime;
       this.push({ type: 'ECU_WIZ', step: 0 });
     }
     d_ECU_WIZ(btn, f, d) {
@@ -648,12 +735,20 @@
         this.icom = null;
         return;
       }
-      if (btn === 'Back') d.step = Math.max(0, d.step - 1);
-      if (btn === 'Next') d.step = Math.min(2, d.step + 1);
-      if (btn === 'Send' && d.step === 2) {
+      if (btn === 'Back') d.step = 0;
+      if (btn === 'Next') d.step = 1;
+      if (btn === 'Send' && d.step === 1) {
         this.pop();
         this.sendLoadset();
       }
+    }
+    d_RELOAD(btn, f, d) {
+      this.pop();
+      if (btn === 'Yes') {
+        this.dialogs = this.dialogs.filter((x) => x.type !== 'STATUS');
+        return d.again();
+      }
+      d.done();
     }
     d_CONFIRM_SAVE(btn) {
       this.pop();
@@ -668,14 +763,14 @@
     c_login() {
       if (this.user) return;
       if (this.card === 'UNINIT') return this.push({ type: 'DEFAULT_SSO' });
-      this.push({ type: 'LOGIN' });
+      this.push({ type: 'LOGON' });
     }
     c_logout() {
       if (!this.user) return;
-      if (this.uasOpen) return this.msgBox('Core Lib', 'Exit the UAS before logging out (File > Exit).', '!');
+      if (this.uasOpen) return this.msgBox('Core Lib', 'You must first completely exit the SKL UAS program (File > Exit).', '!');
       this.log(this.isSSO ? 'SSO Logged off.' : `User (${this.user.name}) Logged off.`);
       this.user = null;
-      this.showProgress('Logging out...', 1500, () => {
+      this.showProgress('Logging off...', 1500, () => {
         this.kov = 'OFF';
       });
     }
@@ -683,16 +778,26 @@
       this.push({ type: 'PROTOCOL' });
     }
     c_resetCard() {
-      if (!this.isSSO) return this.msgBox('Core Lib', 'SSO privileges are required.', '!');
-      this.confirm('Core Lib', 'Reset the INFOSEC card? All key material will be zeroized.', () => this.zeroize());
+      this.push({ type: 'RESET_CARD' });
     }
     c_getTime() {
-      if (!this.user) return this.msgBox('Core Lib', 'Please log in first.', '!');
+      if (!this.user) return this.msgBox('Core Lib', 'Please log on first.', '!');
       this.push({ type: 'GET_TIME' });
     }
     c_changePw() {
-      if (!this.user) return this.msgBox('Core Lib', 'Please log in first.', '!');
-      this.push({ type: 'CHANGE_PW', userId: this.user.name, init: false });
+      if (!this.user) return this.msgBox('Core Lib', 'Please log on first.', '!');
+      this.push({ type: 'CHANGE_PW', userId: this.user.name });
+    }
+    c_cardStatus() {
+      if (!this.user) return this.msgBox('Core Lib', 'Please log on first.', '!');
+      this.msgBox('Card Status', `KOV-21 0020705\nState: Operational\nUser: ${this.user.name}\nCIK: Inserted\nSegments: ${this.keys.length}`, 'i');
+    }
+    c_selfTest() {
+      if (!this.user) return this.msgBox('Core Lib', 'Please log on first.', '!');
+      this.showProgress('Card self-test in progress...', 1500, () => {
+        this.log('Card self-test passed.');
+        this.msgBox('Core Lib', 'Card Self-Test passed.', 'i');
+      });
     }
     c_setTime() {
       if (!this.isSSO) return this.msgBox('Core Lib', 'SSO privileges are required.', '!');
@@ -714,7 +819,7 @@
       });
     }
     c_launchUAS() {
-      if (!this.user) return this.msgBox('Core Lib', 'Please log in first (Session > Login).', '!');
+      if (!this.user) return this.msgBox('Core Lib', 'Please log on first (Session > Login).', '!');
       if (this.uasOpen) {
         this.win = 'UAS';
         return;
@@ -728,7 +833,7 @@
     openUAS() {
       this.uasOpen = true;
       this.win = 'UAS';
-      this.tab = 'PLATS';
+      this.tab = this.loadset ? 'PLATS' : 'KEYS';
       this.log('UAS (SKL) started.');
     }
     closeUAS() {
@@ -750,26 +855,32 @@
       });
     }
     c_deleteDb() {
-      this.confirm('SKL', 'Delete the entire database?', () => {
+      this.confirm('SKL', 'Delete the entire Mission Database?', () => {
         const n = this.keys.length;
         this.keys = [];
         this.loadset = null;
         this.dirty = true;
-        this.log(`Database deleted (${n} keys).`);
+        this.log(`Database deleted (${n} segments).`);
       });
     }
-    c_deleteKeyTag() {
-      const k = this.keyFromNode(this.sel.KEYS);
-      if (this.tab !== 'KEYS' || !k) return this.msgBox('SKL', 'Select a key in the Keys tab.', '!');
-      this.confirm('SKL', 'Delete selected Segments?', () => {
-        this.keys = this.keys.filter((x) => x.id !== k.id);
-        this.log(`Key zeroized: ${k.tag}.`);
+    c_deleteSel() {
+      // File > Delete Key Tag / Delete Edition / Delete Segment (según lo seleccionado)
+      const id = this.sel.KEYS || '';
+      if (this.tab !== 'KEYS' || !/^(st|ed|seg):/.test(id)) return this.msgBox('SKL', 'Select a Short Title, Edition or Segment in the Keys tab.', '!');
+      const kind = id.split(':')[0];
+      const match = (k) => (kind === 'seg' ? `seg:${k.id}` === id : kind === 'ed' ? `ed:${k.st}|${k.edition}` === id : `st:${k.st}` === id);
+      const n = this.keys.filter(match).length;
+      this.confirm('SKL', `Delete selected ${kind === 'seg' ? 'Segment' : kind === 'ed' ? 'Edition' : 'Key Tag'}? (${n} segment(s))`, () => {
+        this.keys.filter(match).forEach((k) => this.log(`Segment zeroized: ${k.tag}.`));
+        this.keys = this.keys.filter((k) => !match(k));
+        this.sel.KEYS = null;
         this.dirty = true;
+        this.msgBox('SKL', 'Selected item deleted.', '!');
       });
     }
     c_currentSel() {
-      const k = this.keyFromNode(this.sel[this.tab]);
-      if (!k) return this.msgBox('SKL', 'Select a key segment.', 'i');
+      const k = /^seg:/.test(this.sel[this.tab] || '') ? this.keyFromNode(this.sel[this.tab]) : null;
+      if (!k) return this.msgBox('SKL', 'Select a key Segment.', 'i');
       this.showSegment(k);
     }
     showSegment(k) {
@@ -797,34 +908,36 @@
       walk(this.tree());
       ids.forEach((id) => this.expanded.delete(id));
     }
-    c_settingsProtocol() {
-      this.push({ type: 'PROTOCOL' });
-    }
     c_load() {
-      // Transmit > Load... / icono LOAD: carga lo seleccionado
+      // File > Transmit > Load... / icono LOAD
       if (this.selectedIsLoadset()) return this.startIcom();
-      const k = this.keyFromNode(this.sel[this.tab]);
-      if (this.tab === 'KEYS' && k) return this.startKeyLoad([k.id]);
-      this.msgBox('SKL', 'Select a key (Keys tab) or the SINCGARS equipment (Plats/Eqs tab) to load.', 'i');
+      const id = this.sel[this.tab] || '';
+      if (this.tab === 'KEYS' && /^seg:/.test(id)) return this.startKeyLoad([id.slice(4)]);
+      if (this.tab === 'KEYS') return this.msgBox('SKL', 'Select a key Segment, or use File > Transmit > Load Selected Keys.', 'i');
+      this.msgBox('SKL', 'Select the Platform or Equipment to load.', 'i');
     }
     c_loadSelectedKeys() {
-      this.push({ type: 'LOAD_SEL' });
+      if (this.tab !== 'KEYS') return this.msgBox('SKL', 'Load Selected Keys is only available from the Keys tab.', 'i');
+      this.push({ type: 'KEY_SELECT', checked: [], order: this.keys.map((k) => k.id), focus: null });
     }
     c_recv() {
       this.msgBox('SKL', 'Receive: función no simulada en el entrenador.', 'i');
+    }
+    c_settingsNotSim() {
+      this.msgBox('SKL', 'Opción del menú Settings no simulada en el entrenador.', 'i');
     }
 
     // ---------------------------------------------------------------- carga de claves
     startKeyLoad(ids) {
       const keys = ids.map((id) => this.keyById(id)).filter(Boolean);
       const tag = keys.find((k) => ['TAG', 'EXPTAG'].includes(this.keyStatus(k)));
-      if (tag) return this.msgBox('SKL', `${tag.tag}: Key variable is needed (KEY TAG).`, '!');
+      if (tag) return this.msgBox('SKL', `${tag.st} ${tag.edition} ${tag.segment}: Key variable is needed (KEY TAG).`, '!');
       const red = keys.find((k) => this.keyStatus(k) === 'RED');
       if (red) {
         this.log(`Key load refused (expired): ${red.tag}.`, false);
-        return this.msgBox('SKL', `${red.tag}: key variable date has expired (RED KEY). Destroy it with View > Keys > Expired Keys.`, '!');
+        return this.msgBox('SKL', `${red.st} ${red.edition} segment ${red.segment}: key variable date has expired (RED KEY).`, '!');
       }
-      this.push({ type: 'LOAD_OPTS', queue: keys.map((k) => k.id) });
+      this.push({ type: 'KEY_SETTINGS', queue: keys.map((k) => k.id), v: Object.assign({}, this.loadSettings) });
     }
     currentSendKey() {
       return this.send ? this.keyById(this.send.queue[this.send.idx]) : null;
@@ -835,80 +948,90 @@
       if (conn.j1 !== 'SKL') return { ok: false, reason: 'No hay dispositivo de llenado conectado en J1' };
       if (req.device === 'CYZ10-RDS') return { ok: false, wait: true, reason: 'Esperando loadset' };
       if (!this.power || !this.user || !this.send || this.send.stage !== 'WAIT') {
-        return { ok: false, wait: true, reason: 'El SKL no estaba en «Press INITIATE Button…» cuando se pulsó ENT en la radio' };
+        return { ok: false, wait: true, reason: 'El SKL no estaba en «Press INITIATE Button....» cuando se pulsó ENT en la radio' };
       }
       const s = this.send;
+      const st = s.settings;
       const want = req.device === 'KYK-13' ? 'DS-102' : 'DS-101';
-      if (s.protocol !== want) {
-        s.lines.push(`Fill failed: equipment expects ${want}.`);
-        this.log(`Key transfer failed: protocol ${s.protocol}, equipment expects ${want}.`, false);
+      const fail = (reason, line) => {
+        s.lines.push(line || 'Transfer failed.');
+        this.log(`Key transfer failed: ${reason}`, false);
         this.changed();
-        return { ok: false, reason: `Protocolo distinto: la radio (FILL DEVICE ${req.device}) espera ${want} y el SKL envía ${s.protocol}` };
-      }
-      if (want === 'DS-102' && s.activation !== 'KYK-13') return { ok: false, reason: 'En DS-102 el modo de activación debe ser KYK-13' };
+        return { ok: false, reason };
+      };
+      if (st.protocol !== want) return fail(`la radio (FILL DEVICE ${req.device}) espera ${want} y el SKL emula ${st.protocol}.`, 'No response from equipment.');
+      if (want === 'DS-102' && st.activate !== 'KYK-13') return fail(`con FILL DEVICE KYK-13 el Activate Mode del SKL debe ser KYK-13 (está en ${st.activate}).`, 'No response from equipment.');
       const key = this.currentSendKey();
       key.issued++;
       s.stage = 'SENT';
-      s.lines.push(`Sending ${key.text}…`, 'Transfer successful.');
-      this.log(`Key transmitted: ${key.tag} ${this.segLabel(key)} to AN/PRC-117F via ${s.protocol}${s.protocol === 'DS-102' ? ' (KYK-13)' : ''}.`);
+      s.lines.push('Transmit In Progress ....');
+      this.log(`Key transmitted: ${key.tag} (${this.segLabel(key)}) to AN/PRC-117F, ${st.protocol}/${st.activate}.`);
       this.dirty = true;
-      // siguiente clave o fin
       this.after(900, () => {
         if (this.send !== s) return;
-        this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
         s.idx++;
         if (s.idx < s.queue.length) {
           s.stage = 'READY';
           s.lines = [];
-          this.push({ type: 'READY' });
+          this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
+          this.nextKeyStep();
         } else {
+          s.lines = ['Operation Successful.'];
+          const sd = this.dialogs.find((d) => d.type === 'STATUS');
+          if (sd) sd.done = true;
           this.send = null;
           this.msgBox('SKL', 'Operation Successful.', '!');
         }
         this.changed();
       });
       this.changed();
-      return { ok: true, key: { tag: key.tag, bank: key.bank, type: key.type }, protocol: s.protocol };
+      return { ok: true, key: { tag: key.tag, bank: key.bank, type: key.type }, protocol: st.protocol };
     }
 
-    // ---------------------------------------------------------------- loadset SINCGARS (ICOM)
+    // ---------------------------------------------------------------- loadset (ICOM)
     startIcom() {
-      if (!this.loadset) return this.msgBox('SKL', 'No loadset in the database.', '!');
-      this.icom = { ls: this.loadset, transfer: 'ICOM', includeTime: false, lines: [] };
-      this.showProgress('Gathering data...', 800, () => this.push({ type: 'SINC_MODE' }));
+      if (!this.loadset) return this.msgBox('SKL', 'No equipment in the Mission Database.', '!');
+      this.icom = { ls: this.loadset, transfer: 'NON-ICOM', includeTime: false, lines: [] };
+      this.showProgress('Gathering data...', 800, () => this.push({ type: 'SINC_MODE', v: { transfer: 'NON-ICOM', includeTime: false } }));
     }
     sendLoadset() {
       const ic = this.icom;
       if (!ic) return;
       ic.lines = ['Press LOAD Button.'];
-      this.push({ type: 'STATUS', kind: 'ICOM' });
+      this.push({ type: 'STATUS', kind: 'ICOM', done: false });
+      const finish = () => {
+        this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
+        ic.lines = ['Operation Successful.'];
+        this.push({ type: 'STATUS', kind: 'ICOM', done: true });
+        this.msgBox('SKL', 'Operation Successful.', '!');
+        this.log(`Loadset ${ic.ls.name} transmitted (${ic.transfer}${ic.includeTime ? ', time' : ''}).`);
+      };
+      const again = () => this.push({ type: 'SINC_MODE', v: { transfer: ic.transfer, includeTime: ic.includeTime } });
       if (ic.transfer !== 'ICOM') {
-        this.after(1200, () => {
-          ic.lines.push('Error: el AN/PRC-117F carga el loadset en modo ICOM.');
+        this.after(1500, () => {
+          ic.lines.push('No response from equipment.');
+          this.push({ type: 'RELOAD', again, done: () => { this.icom = null; this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS'); } });
           this.changed();
         });
         return;
       }
       const r = this.env.pushLoadset(ic.ls, ic.includeTime);
       if (!r.ok) {
-        this.after(1200, () => {
-          ic.lines.push('Equipment not responding.', `Error: ${r.reason}`);
+        this.after(1500, () => {
+          ic.lines.push('No response from equipment.');
           this.log(`Loadset transfer failed: ${r.reason}.`, false);
+          this.push({ type: 'RELOAD', again, done: () => { this.icom = null; this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS'); }, reason: r.reason });
           this.changed();
         });
         return;
       }
-      const steps = [...ic.ls.teks.map((_, i) => `Sending TEK #${i + 1}`), 'Sending KEK #6', 'Sending Cold Start TSK', ...ic.ls.hopsets.map((_, i) => `Sending Hopset #${i + 1}`), 'Sending Lockouts'];
-      steps.forEach((st, i) => this.after(250 * (i + 1), () => {
-        ic.lines.push(st);
+      const steps = [...ic.ls.teks.map((_, i) => `Sending TEK #${i + 1}`), 'Sending KEK #6', 'Sending Cold Start TSK', ...ic.ls.hopsets.map((_, i) => `Sending Hopset #${i + 1}`), 'Lockout #8 is empty. Sending empty cell...'];
+      steps.forEach((stp, i) => this.after(250 * (i + 1), () => {
+        ic.lines.push(stp);
         this.changed();
       }));
       this.after(250 * (steps.length + 1), () => {
-        ic.lines.push('Re-load equipment.');
-        this.log(`Loadset ${ic.ls.name} transmitted to AN/PRC-117F (ICOM${ic.includeTime ? ', time' : ''}).`);
-        this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
-        this.icom = null;
-        this.msgBox('SKL', 'ICOM transfer successful.', '!');
+        this.push({ type: 'RELOAD', again, done: () => { finish(); this.icom = null; } });
         this.changed();
       });
     }
@@ -921,8 +1044,8 @@
         ['SKL Ver 4.0 (SIM)', ''],
         ['SKL Database Version: 2.33', ''],
         ['Highest Key Classification: Unclassified', ''],
-        ['Platform', '2'],
-        ['Equipment', String(this.loadset ? 2 : 1)],
+        ['Platform', String(this.loadset ? 1 : 0)],
+        ['Equipment', String(this.loadset ? 1 : 0)],
         ['Segment', String(this.keys.length)],
         ['TEK', String(c('TEK'))],
         ['KEK', String(c('KEK'))],
@@ -931,7 +1054,6 @@
         ['ICOM TSK', String(this.loadset ? this.loadset.hopsets.length : 0)],
         ['Key Needed', String(this.keys.filter((k) => !k.variable).length)],
         ['Expired Key', String(this.keys.filter((k) => k.exp < now).length)],
-        ['Audit records', String(this.audit.length)],
       ];
     }
     auditRows() {
@@ -939,43 +1061,46 @@
     }
     startupInfo() {
       return [
-        'SKL Ver 4.0 (SIM) - Entrenamiento',
+        'SKL Ver 4.0 (SIM)',
         'SKL Database Version: 2.33',
         'Highest SOI Classification: Unclassified',
         'Highest Key Classification: Unclassified',
         'Audit Free Space:',
+        '   Total bytes free: 2092366',
         `   Total bytes used: ${this.audit.length * 64}`,
-        '   % of bytes free: 99.7',
+        '   % of bytes free: 99.77',
       ];
     }
 
     // ---------------------------------------------------------------- persistencia
     serialize() {
       return {
-        v: 3, card: this.card, ssoPass: this.ssoPass, users: this.users, keys: this.keys, loadset: this.loadset,
-        audit: this.audit.slice(0, 150), locked: this.locked, attempts: this.attempts,
-        protocol: this.protocol, activation: this.activation, battery: this.battery,
+        v: 4, card: this.card, accounts: this.accounts, keys: this.keys, loadset: this.loadset, extended: this.extended,
+        audit: this.audit.slice(0, 150), loadSettings: this.loadSettings, coreProtocol: this.coreProtocol,
+        displayEvery: this.displayEvery, battery: this.battery,
       };
     }
     load(o) {
-      if (!o || typeof o !== 'object' || o.v !== 3) return;
+      if (!o || typeof o !== 'object' || o.v !== 4) return;
       if (o.card === 'UNINIT' || o.card === 'READY') this.card = o.card;
-      if (typeof o.ssoPass === 'string') this.ssoPass = o.ssoPass;
-      if (o.users && typeof o.users === 'object') this.users = o.users;
-      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.bank);
+      if (o.accounts && typeof o.accounts === 'object') this.accounts = o.accounts;
+      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.st);
       if (o.loadset === null || (o.loadset && Array.isArray(o.loadset.hopsets))) this.loadset = o.loadset;
+      if (typeof o.extended === 'boolean') this.extended = o.extended;
       if (Array.isArray(o.audit)) this.audit = o.audit.filter((a) => a && a.text);
-      if (typeof o.locked === 'boolean') this.locked = o.locked;
-      if (Number.isInteger(o.attempts)) this.attempts = o.attempts;
-      if (o.protocol === 'DS-101' || o.protocol === 'DS-102') this.protocol = o.protocol;
-      if (typeof o.activation === 'string') this.activation = o.activation;
+      if (o.loadSettings) this.loadSettings = Object.assign(this.loadSettings, o.loadSettings);
+      if (o.coreProtocol) this.coreProtocol = Object.assign(this.coreProtocol, o.coreProtocol);
+      if (typeof o.displayEvery === 'boolean') this.displayEvery = o.displayEvery;
       if (Number.isFinite(o.battery)) this.battery = Math.max(3, Math.min(100, o.battery));
       this.changed();
     }
   }
 
   SKL.ACCOUNT = ACCOUNT;
+  SKL.SAT_ST = SAT_ST;
+  SKL.ACTIVATE = ACTIVATE;
   SKL.defaultKeys = defaultKeys;
   SKL.fmtAudit = fmtAudit;
+  SKL.fmtKeyDate = fmtKeyDate;
   SIM.SKL = SKL;
 })(typeof window !== 'undefined' ? window : globalThis);

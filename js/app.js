@@ -4,9 +4,9 @@
   const SIM = window.SIM;
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
-  const STORE = 'sim-prc117f-skl-v3';
+  const STORE = 'sim-prc117f-skl-v4';
 
-  const DEFAULT_CONN = { j1: 'NONE', j5: false, j8: 'NONE', az: 0, el: 0, cik: false };
+  const DEFAULT_CONN = { j1: 'NONE', j5: false, j8: 'NONE', az: 0, el: 0, cik: true };
   const conn = Object.assign({}, DEFAULT_CONN);
   const prefs = { hints: true, voice: false, call: 'Lobo 2', scenario: 'bit' };
   let completed = {};
@@ -136,7 +136,6 @@
     $$('input[name="j1"]').forEach((r) => { r.checked = r.value === conn.j1; });
     $$('input[name="j8"]').forEach((r) => { r.checked = r.value === conn.j8; });
     $('#conn-j5').checked = conn.j5;
-    $('#conn-cik').checked = conn.cik;
     if (document.activeElement !== $('#conn-az')) $('#conn-az').value = conn.az;
     if (document.activeElement !== $('#conn-el')) $('#conn-el').value = conn.el;
     $('#pointing').disabled = conn.j8 !== 'SATCOM';
@@ -157,10 +156,12 @@
   // ------------------------------------------------------------------ SKL
   let lastSkl = '';
   let lastDlgKey = '';
+  let sipCaps = false;
+  let sipTarget = null; // nombre del último campo con foco (para el Input Panel)
   function renderSKL() {
     const el = $('#skl-screen');
     el.className = 'skl-screen' + (skl.power ? ' on' : '');
-    const html = SIM.renderSKL(skl, { hints: prefs.hints });
+    const html = SIM.renderSKL(skl, { hints: prefs.hints, caps: sipCaps });
     if (html !== lastSkl) {
       // conserva lo tecleado en los campos del diálogo abierto
       const dlgKey = skl.dlg ? skl.dlg.type + ':' + skl.dialogs.length : '';
@@ -426,6 +427,48 @@
     SIM.audio.beep(2400, 15);
     skl.act(b.dataset.act, b.dataset.arg);
   });
+  // campos que cambian el diálogo en vivo (Protocol, Activate Mode, Transfer Type, casillas)
+  sklScreen.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-live]')) return;
+    skl.act('dlgField', { fields: dialogFields(e.target.closest('form')) });
+  });
+  sklScreen.addEventListener('focusin', (e) => {
+    if (e.target.tagName === 'INPUT' && !['checkbox', 'radio'].includes(e.target.type)) sipTarget = e.target.name;
+  });
+  // Input Panel (teclado en pantalla de Windows CE)
+  sklScreen.addEventListener('mousedown', (e) => { if (e.target.closest('[data-kb]')) e.preventDefault(); });
+  sklScreen.addEventListener('click', (e) => {
+    const kb = e.target.closest('[data-kb]');
+    if (!kb) return;
+    e.stopPropagation();
+    const k = kb.dataset.kb;
+    const form = sklScreen.querySelector('.ce-dlg');
+    const inputs = form ? [...form.querySelectorAll('input[type="text"]:not([readonly]), input[type="password"]')] : [];
+    let target = inputs.find((i) => i.name === sipTarget) || inputs[0];
+    if (k === 'CAP' || k === 'Shift') {
+      sipCaps = !sipCaps;
+      lastSkl = '';
+      renderSKL();
+      return;
+    }
+    if (!target) return;
+    if (k === '⌫') target.value = target.value.slice(0, -1);
+    else if (k === 'Tab') {
+      target = inputs[(inputs.indexOf(target) + 1) % inputs.length];
+      sipTarget = target.name;
+    } else if (k === '↵') {
+      const def = form.querySelector('.ce-btn.def[data-dlg-btn]');
+      if (def) def.click();
+      return;
+    } else if (k === 'Esc') {
+      const c = form.querySelector('[data-dlg-btn="Cancel"]');
+      if (c) c.click();
+      return;
+    } else if (k.length === 1 || k === ' ') {
+      target.value += sipCaps && /[a-z]/.test(k) ? k.toUpperCase() : k;
+    }
+    target.focus({ preventScroll: true });
+  }, true);
   sklScreen.addEventListener('dblclick', (e) => {
     const n = e.target.closest('[data-node]');
     if (n) skl.act('open', n.dataset.node);
@@ -477,15 +520,6 @@
   const clampIn = (el, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(el.value) || 0)));
   $('#conn-az').addEventListener('change', (e) => { conn.az = clampIn(e.target, 0, 359); renderAll(); save(); });
   $('#conn-el').addEventListener('change', (e) => { conn.el = clampIn(e.target, 0, 90); renderAll(); save(); });
-  $('#conn-cik').addEventListener('change', (e) => {
-    conn.cik = e.target.checked;
-    if (skl.power) {
-      skl.cikChanged();
-      toast('El CIK solo debe insertarse o retirarse con el SKL apagado (queda registrado en la auditoría).', 'warn');
-    }
-    renderAll();
-    save();
-  });
   $('#bat-replace').addEventListener('click', () => { radio.replaceBattery(); toast('Batería de la radio reemplazada.', 'ok'); });
   $('#skl-bat-replace').addEventListener('click', () => { skl.replaceBattery(); toast('Batería del SKL recargada.', 'ok'); });
 
@@ -506,6 +540,11 @@
     renderAll();
   });
   $('#log-clear').addEventListener('click', () => { logEl.innerHTML = ''; });
+  $('#btn-extdb').addEventListener('click', () => {
+    skl.loadExtendedDb();
+    toast('BD ampliada cargada en el SKL: LOS VINSON, TSK DAMA, MWOD y el loadset del RT1 PRC117F (pestaña Plats).', 'ok');
+    addLog({ dir: 'INFO', text: 'Instructor: base de datos ampliada cargada en el SKL.' });
+  });
   $('#sc-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-sc]');
     if (!b) return;

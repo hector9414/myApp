@@ -127,9 +127,7 @@
             <label class="num">Azimut <input type="number" id="conn-az" min="0" max="359" step="1" value="0">°</label>
             <label class="num">Elevación <input type="number" id="conn-el" min="0" max="90" step="1" value="0">°</label>
           </fieldset>
-          <div class="toggles">
-            <label class="switch"><input type="checkbox" id="conn-cik"> CIK insertado en el SKL (solo con el SKL apagado)</label>
-          </div>
+          <p class="muted small">El CIK va insertado en el SKL (no se retira en los procedimientos).</p>
           <div class="battery">
             <span>Batería de la radio</span>
             <div class="bar"><div id="bat-bar"></div></div>
@@ -181,7 +179,10 @@
 
     <!-- ============================== EJERCICIOS ============================== -->
     <section class="card" aria-labelledby="sc-title">
-      <h2 id="sc-title" class="card-title">Ejercicios</h2>
+      <div class="card-head">
+        <h2 id="sc-title" class="card-title">Ejercicios</h2>
+        <button type="button" id="btn-extdb" class="btn small ghost" title="Añade al SKL el material de los ejercicios LOS cifrado, DAMA, SINCGARS y HAVEQUICK">Cargar BD ampliada en el SKL</button>
+      </div>
       <div class="sc-list" id="sc-list"></div>
       <div class="sc-detail" id="sc-detail"></div>
     </section>
