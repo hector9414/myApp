@@ -1,95 +1,73 @@
 /*
- * Red de radio simulada: estaciones virtuales que responden a las
- * transmisiones del alumno cuando la configuración de la radio coincide con
- * la de su red (canal, modulación, claves, TOD, antena y alcance).
+ * Red de radio simulada (SOI de entrenamiento): estaciones virtuales que
+ * responden cuando la radio está configurada como su red, satélite para la
+ * prueba RSSI y controlador DAMA.
+ *
+ * Todos los datos son ficticios.
  */
 (function (g) {
   'use strict';
   const SIM = g.SIM;
+  const pad = SIM.pad;
+  const near = (a, b) => Math.abs(a - b) < 0.000005;
+
+  /** Datos del satélite de entrenamiento para apuntar la antena. */
+  const SATELLITE = { name: 'SAT-ENT 105W', az: 135, el: 40 };
+
+  /** Controlador DAMA de entrenamiento. */
+  const DAMA = { channel: 54, networkAddr: 51234, knownTBA: [10452], owTsk: 'ABD 07 5AT900 A-1', maxPrecedence: 'PRIORITY' };
 
   const STATIONS = [
     {
-      id: 'HALCON',
-      call: 'Halcón 6',
-      mode: 'LOS', mod: 'FM', freq: 45.5, bw: 25,
-      crypto: null, distanceKm: 3,
-      desc: 'Puesto de mando de compañía · LOS FM 45.5000 MHz · en claro (PT) · 3 km',
-      chatter: [
-        'A todas las estaciones de esta red, aquí Halcón 6. Reporte de situación en diez minutos. Corto.',
-        'Aquí Halcón 6. Verificación de comunicaciones, respondan por orden. Cambio.',
-      ],
+      id: 'HALCON', call: 'Halcón 6', type: 'LOS', freq: 45.5, mod: 'FM', sq: 'TONE', crypto: null, distanceKm: 3,
+      soi: 'LOS 45.50000 FM PT TONE',
+      desc: 'Puesto de mando de compañía · LOS 45.50000 MHz FM · PT · squelch TONE · 3 km',
+      chatter: ['A todas las estaciones de esta red, aquí Halcón 6. Reporte de situación en diez minutos. Corto.'],
       replies: ['Sin novedad en el puesto de mando.', 'Continúe con la misión.'],
     },
     {
-      id: 'CONDOR',
-      call: 'Cóndor 3',
-      mode: 'LOS', mod: 'FM', freq: 62.75, bw: 25,
-      crypto: 'ALFA-TEK-01', distanceKm: 12,
-      desc: 'Pelotón destacado · LOS FM 62.7500 MHz · cifrado CT (ALFA-TEK-01) · 12 km',
+      id: 'CONDOR', call: 'Cóndor 3', type: 'LOS', freq: 62.75, mod: 'FM', sq: 'TONE', crypto: { mode: 'VINSON', tag: 'ABD 05 5AT900 A-1' }, distanceKm: 15,
+      soi: 'LOS 62.75000 FM CT VINSON ABD 05',
+      desc: 'Pelotón destacado · LOS 62.75000 MHz FM · CT VINSON (ABD 05 5AT900, segmento 1) · 15 km',
       chatter: ['Aquí Cóndor 3. En posición, sin contacto. Corto.'],
       replies: ['Red cifrada verificada.', 'Mantengo posición.'],
     },
     {
-      id: 'JAGUAR',
-      call: 'Jaguar 1',
-      mode: 'SINCGARS', netId: 345,
-      tsk: 'SINC-HOP-12', crypto: 'BRAVO-TEK-02', distanceKm: 8,
-      desc: 'Elemento de maniobra · SINCGARS red 345 · TSK SINC-HOP-12 · CT BRAVO-TEK-02 · 8 km',
+      id: 'JAGUAR', call: 'Jaguar 1', type: 'SINCGARS', netId: 345, hop: 'ABD 21 5AT900 A-1', crypto: { mode: 'VINSON', tag: 'ABD 11 5AT900 A-1' }, distanceKm: 8,
+      soi: 'SINCGARS F345 CT VINSON (LOADSET C1)',
+      desc: 'Elemento de maniobra · SINCGARS red F345 (loadset RT1 PRC117F, hopset H1) · CT VINSON TEK C1 (ABD 11) · 8 km',
       chatter: ['Aquí Jaguar 1. Iniciando movimiento hacia la fase dos. Corto.'],
       replies: ['Sincronizado en salto de frecuencia.', 'Le tengo en la red de maniobra.'],
     },
     {
-      id: 'AGUILA',
-      call: 'Águila 2',
-      mode: 'HQ', hqNet: 300,
-      wod: 'HQ-WOD-NOV', crypto: null, distanceKm: 40, airborne: true,
-      desc: 'Aeronave de apoyo · HAVE QUICK II red 300 · WOD HQ-WOD-NOV · TOD requerido · 40 km (en vuelo)',
+      id: 'AGUILA', call: 'Águila 2', type: 'HAVEQUICK', hqNet: '00.300', wod: 'ABD 50 5AT900 A-1', crypto: null, distanceKm: 40, airborne: true,
+      soi: 'HAVEQUICK NET 00.300 PT MWOD ABD 50',
+      desc: 'Aeronave de apoyo · HAVEQUICK II red 00.300 · MWOD ABD 50 5AT900 en la posición del día UTC · TOD · PT · 40 km (en vuelo)',
       chatter: ['Aquí Águila 2, en órbita sobre el punto de control. Corto.'],
-      replies: ['Le tengo en salto HAVE QUICK.', 'Disponible para apoyo durante veinte minutos.'],
+      replies: ['Le tengo en salto HAVEQUICK.', 'Disponible para apoyo durante veinte minutos.'],
     },
     {
-      id: 'CENTAURO',
-      call: 'Base Centauro',
-      mode: 'SATCOM', satType: 'DEDICADO', tx: 311.15, rx: 254.15, bw: 5,
-      crypto: 'ANDVT-TEK-31', alg: 'ANDVT',
-      desc: 'Base de operaciones · SATCOM dedicado 5 kHz · TX (subida) 311.1500 / RX (bajada) 254.1500 MHz · CT ANDVT con ANDVT-TEK-31 · antena SATCOM · mín. 10 W',
+      id: 'CENTAURO', call: 'Base Centauro', type: 'SAT', code: 150, crypto: { mode: 'ANDVT', tag: (t) => SIM.satcomTag(t) },
+      soi: 'SATCOM CODE 150 (5K) CT ANDVT ABD 02 (MES)',
+      desc: 'Base de operaciones · SATCOM dedicado código 150 (5 kHz) · CT ANDVT (ABD 02 5AT900, segmento del mes en curso) · antena SATCOM apuntada',
       chatter: ['Aquí Base Centauro. Ventana de satélite estable. Corto.'],
       replies: ['Enlace satelital en banda estrecha confirmado.', 'Mensaje copiado, se retransmite al escalón superior.'],
     },
     {
-      id: 'ORION',
-      call: 'Nodo Orión',
-      mode: 'SATCOM', satType: 'DAMA', sat: 'SAT-2', net: 7, bw: 25, assignedAddr: 10452,
-      crypto: 'VIN-TEK-05', alg: 'VINSON',
-      desc: 'Nodo de mando · SATCOM DAMA 25 kHz · satélite SAT-2, red 07 · su dirección de terminal asignada: 10452 · CT VINSON con VIN-TEK-05 · acceso DAMA requerido',
+      id: 'ORION', call: 'Nodo Orión', type: 'DAMA', netAddr: DAMA.networkAddr, crypto: { mode: 'ANDVT', tag: (t) => SIM.satcomTag(t) },
+      soi: `DAMA CH ${pad(DAMA.channel, 3)} NET ${DAMA.networkAddr} TBA ${DAMA.knownTBA[0]}`,
+      desc: `Nodo de mando · DAMA canal ${pad(DAMA.channel, 3)} (25 kHz AC) · dirección de red ${DAMA.networkAddr} · su TBA: ${DAMA.knownTBA[0]} · TSK de orderwire ${DAMA.owTsk} · CT ANDVT (ABD 02 5AT900, segmento del mes) · config. 060 · precedencia ROUTINE`,
       chatter: ['Aquí Nodo Orión. Red DAMA operativa, mantengan disciplina de red. Corto.'],
       replies: ['Le tengo en la red DAMA.', 'Asignación DAMA verificada.'],
     },
   ];
 
-  function sameChannel(st, p) {
-    if (st.mode !== p.mode) return false;
-    if (st.mode === 'LOS') return Math.abs(st.freq - p.freq) < 0.0005;
-    if (st.mode === 'SINCGARS') return st.netId === p.netId;
-    if (st.mode === 'HQ') return st.hqNet === p.hqNet;
-    if (st.satType !== p.satType) return false;
-    if (st.satType === 'DAMA') return st.sat === p.damaSat && st.net === p.damaNet;
-    return Math.abs(st.tx - p.satTx) < 0.0005 && Math.abs(st.rx - p.satRx) < 0.0005;
-  }
-
-  function describeChannel(s) {
-    const p = s.preset;
-    const ch =
-      p.mode === 'LOS' ? `LOS ${p.mod} ${p.freq.toFixed(4)} MHz`
-        : p.mode === 'SINCGARS' ? `SINCGARS red ${SIM.pad(p.netId, 3)}`
-          : p.mode === 'HQ' ? `HAVE QUICK red ${SIM.pad(p.hqNet, 3)}`
-            : p.satType === 'DAMA' ? `SATCOM DAMA ${p.damaSat} red ${SIM.pad(p.damaNet)} ${p.satBw}K dir ${SIM.pad(p.damaAddr, 5)}`
-              : `SATCOM ${p.satBw}K TX ${p.satTx.toFixed(4)} / RX ${p.satRx.toFixed(4)} MHz`;
-    return `P${SIM.pad(s.presetNum)} · ${ch} · ${p.crypto}${p.crypto === 'CT' ? ' ' + p.cryptoMode + ' ' + (s.keyTag || '?') : ''} · ${s.powerW} W`;
+  function stationFreqs(st) {
+    if (st.type === 'SAT') return SIM.Radio.satCode(st.code);
+    return null;
   }
 
   class Net extends SIM.Emitter {
-    /** env.myCall() -> indicativo del alumno */
     constructor(radio, env) {
       super();
       this.radio = radio;
@@ -102,88 +80,155 @@
       radio.on('transmit', (e) => this.onTransmit(e));
     }
 
-    /** Evalúa si una transmisión con esta configuración llegaría a alguna estación. */
-    evaluate(s) {
-      const p = s.preset;
-      const c = s.conn;
-      const fail = (reason, station) => ({ ok: false, reason, station: station || null });
-      if (c.antenna === 'NONE') return fail('Sin antena conectada: la radio no radia (alarma VSWR). Conecte una antena.');
-      const st = this.stations.find((x) => sameChannel(x, p));
-      if (!st) {
-        if (p.mode === 'LOS') {
-          const near = this.stations.find((x) => x.mode === 'LOS' && Math.abs(x.freq - p.freq) < 0.1);
-          if (near) return fail(`No hay ninguna estación exactamente en ${p.freq.toFixed(4)} MHz. Revise la frecuencia (dígitos y decimales).`);
+    /** Puntuación RSSI (0-100) según la antena y su apuntamiento. */
+    pointing(conn) {
+      if (conn.j8 !== 'SATCOM') return conn.j8 === 'FLEX' ? 12 : 0;
+      let dAz = Math.abs(((Number(conn.az) || 0) - SATELLITE.az + 540) % 360 - 180);
+      const dEl = Math.abs((Number(conn.el) || 0) - SATELLITE.el);
+      return Math.max(0, Math.min(99, Math.round(99 - 3 * (dAz + dEl))));
+    }
+    rssi(s) {
+      return this.pointing(s.conn);
+    }
+
+    findStation(s) {
+      if (s.dama) return null;
+      const n = s.net;
+      return this.stations.find((st) => {
+        if (n.type === 'LOS') return st.type === 'LOS' && near(st.freq, n.tx);
+        if (n.type === 'SAT') {
+          if (st.type !== 'SAT') return false;
+          const f = stationFreqs(st);
+          return near(f.tx, s.sat.tx) && near(f.rx, s.sat.rx);
         }
-        if (p.mode === 'SATCOM') {
-          if (p.satType === 'DEDICADO') {
-            const swapped = this.stations.find((x) => x.mode === 'SATCOM' && x.satType === 'DEDICADO' && Math.abs(x.tx - p.satRx) < 0.0005 && Math.abs(x.rx - p.satTx) < 0.0005);
-            if (swapped) return fail('Frecuencias SATCOM invertidas: FREC TX debe ser la de subida (292-318 MHz) y FREC RX la de bajada (243-270 MHz).');
-            const half = this.stations.find((x) => x.mode === 'SATCOM' && x.satType === 'DEDICADO' && (Math.abs(x.tx - p.satTx) < 0.0005 || Math.abs(x.rx - p.satRx) < 0.0005));
-            if (half) return fail('Solo coincide una de las dos frecuencias del canal SATCOM: revise la pareja TX/RX en la orden de comunicaciones.');
-          } else {
-            const net = this.stations.find((x) => x.mode === 'SATCOM' && x.satType === 'DAMA' && x.net === p.damaNet);
-            if (net) return fail(`La red DAMA ${SIM.pad(p.damaNet)} está en ${net.sat}, no en ${p.damaSat}.`);
-          }
-        }
-        return fail('Nadie escucha en este canal: compruebe modo, frecuencia, número de red o canal según la orden de comunicaciones.');
-      }
-      if (st.mode === 'LOS' && st.mod !== p.mod) return fail(`${st.call} opera en ${st.mod}; su radio transmite en ${p.mod}.`, st);
-      if (st.mode === 'LOS' && st.bw !== p.bw) return fail(`El ancho de canal no coincide: la red usa ${st.bw} kHz.`, st);
-      if (st.mode === 'SATCOM' && c.antenna !== 'SATCOM') return fail('SATCOM necesita la antena SATCOM direccional.', st);
-      if (st.mode === 'SATCOM' && st.bw !== p.satBw) return fail(`El ancho de canal SATCOM no coincide: la red usa ${st.bw} kHz.`, st);
-      if (st.mode === 'SATCOM' && st.satType === 'DAMA') {
-        if (p.damaAddr !== st.assignedAddr) return fail(`El controlador DAMA no reconoce la dirección de terminal ${SIM.pad(p.damaAddr, 5)}: use la asignada en la orden de comunicaciones.`, st);
-        if (!s.damaOk) return fail('Sin acceso DAMA concedido: PGM > ACCESO DAMA.', st);
-      }
-      if (st.mode !== 'SATCOM' && c.antenna === 'SATCOM') return fail('La antena SATCOM no sirve para enlaces terrestres LOS/SINCGARS/HQ: conecte el látigo.', st);
-      if (st.mode === 'SINCGARS' && s.transecTag !== st.tsk) return fail('La TSK cargada no coincide con la de la red SINCGARS: no hay sincronización de saltos.', st);
-      if (st.mode === 'HQ') {
-        if (s.transecTag !== st.wod) return fail('La WOD (palabra del día) no coincide con la de la red HAVE QUICK.', st);
-        if (!s.todValid) return fail('Sin hora TOD sincronizada no es posible el salto HAVE QUICK.', st);
-      }
+        if (n.hop === 'SINCGARS') return st.type === 'SINCGARS' && s.hopNetId === st.netId;
+        return st.type === 'HAVEQUICK' && st.hqNet === n.hqNet;
+      });
+    }
+
+    /** Comprueba la parte criptográfica. Devuelve null si es correcta o el motivo del fallo. */
+    cryptoCheck(st, encrypted, mode, tag) {
       if (st.crypto) {
-        if (p.crypto !== 'CT') return fail(`${st.call} opera cifrado (CT); su transmisión en claro (PT) no es aceptada.`, st);
-        const alg = st.alg || 'VINSON';
-        if (p.cryptoMode !== alg) return fail(`${st.call} usa modo cripto ${alg}; su radio transmite en ${p.cryptoMode}.`, st);
-        if (s.keyTag !== st.crypto) return fail('La TEK seleccionada no es la de la red: la estación no puede descifrar su transmisión.', st);
-      } else if (p.crypto === 'CT') {
-        return fail(`${st.call} opera en claro (PT): no puede descifrar su transmisión CT.`, st);
+        if (!encrypted) return `${st.call} opera cifrado (CT ${st.crypto.mode}); su transmisión salió en claro (interruptor en PT o COMSEC NONE).`;
+        if (mode !== st.crypto.mode) return `${st.call} usa ${st.crypto.mode}; su preset usa ${mode}.`;
+        const want = typeof st.crypto.tag === 'function' ? st.crypto.tag(this.env.now()) : st.crypto.tag;
+        if (tag !== want) return `La TEK seleccionada no es la de la red de ${st.call} (${want}): no pueden descifrarle.`;
+        return null;
       }
-      if (st.mode === 'SATCOM') {
-        if (s.powerW < 10) return fail('Potencia insuficiente para el enlace satelital (mínimo ALTA, 10 W).', st);
-        return { ok: true, station: st, quality: 'fuerte y claro' };
-      }
-      const rangeKm = s.powerKm * (st.airborne ? 3 : 1);
-      const margin = rangeKm / st.distanceKm;
-      if (margin < 1) return fail(`Fuera de alcance: ${st.call} está a ${st.distanceKm} km y con ${s.powerW} W llega a unos ${rangeKm} km. Aumente la potencia.`, st);
-      return { ok: true, station: st, quality: margin >= 1.6 ? 'fuerte y claro' : 'débil pero legible' };
+      if (encrypted) return `${st.call} opera en claro (PT): no puede descifrar su transmisión. Ponga el interruptor en PT o COMSEC en NONE.`;
+      return null;
     }
 
-    /** ¿Se recibe en claro lo que emite una estación en el canal actual? */
-    canHear(st, s) {
-      const p = s.preset;
+    /** Evalúa si una transmisión llega a alguna estación y si se podrá oír la respuesta. */
+    evaluate(s) {
+      const fail = (reason, station) => ({ ok: false, reason, station: station || null });
       const c = s.conn;
-      if (c.antenna === 'NONE') return false;
-      if (st.mode === 'SATCOM' ? c.antenna !== 'SATCOM' : c.antenna === 'SATCOM') return false;
-      if (st.mode === 'LOS' && (st.mod !== p.mod || st.bw !== p.bw)) return false;
-      if (st.mode === 'SINCGARS' && s.transecTag !== st.tsk) return false;
-      if (st.mode === 'HQ' && (s.transecTag !== st.wod || !s.todValid)) return false;
-      if (st.mode === 'SATCOM' && (st.bw !== p.satBw || (st.satType === 'DAMA' && !s.damaOk))) return false;
-      return true;
-    }
-    decrypts(st, s) {
-      if (!st.crypto) return true; // la 117F admite recepción en claro aunque esté en CT
-      return s.preset.crypto === 'CT' && s.preset.cryptoMode === (st.alg || 'VINSON') && s.keyTag === st.crypto;
+      if (s.dama) return this.evaluateDama(s);
+      const n = s.net;
+      // antena
+      if (s.port === 'J5' && !c.j5) return fail('Por debajo de 90 MHz (y en SINCGARS) se necesita la antena de pala VHF en J5.');
+      if (s.port === 'J8') {
+        if (n.type === 'SAT' && c.j8 !== 'SATCOM') return fail('SATCOM necesita la antena SATCOM en J8.');
+        if (n.type !== 'SAT' && c.j8 !== 'FLEX') return fail('Entre 90 y 512 MHz se necesita la antena flexible VHF/UHF en J8.');
+      }
+      const st = this.findStation(s);
+      if (!st) {
+        if (n.type === 'SAT') {
+          const sw = this.stations.find((x) => x.type === 'SAT' && near(stationFreqs(x).tx, s.sat.rx) && near(stationFreqs(x).rx, s.sat.tx));
+          if (sw) return fail('Frecuencias SATCOM invertidas: TX debe ser la de subida (292-318 MHz) y RX la de bajada (243-270 MHz).');
+          return fail('Nadie escucha en ese canal SATCOM: compruebe el código de frecuencia en la SOI.');
+        }
+        if (n.type === 'HOP' && n.hop === 'SINCGARS') {
+          if (!s.hopTag) return fail('El compartimento de hopset seleccionado está vacío: cargue el loadset SINCGARS.');
+          return fail(`El hopset del compartimento ${pad(n.hopset)} es de la red F${pad(s.hopNetId, 3)}: elija el compartimento con la red de la SOI.`);
+        }
+        return fail('Nadie escucha en este canal: compruebe frecuencia, red y tipo de red según la SOI.');
+      }
+      if (st.type === 'LOS') {
+        if (st.mod !== n.mod) return fail(`${st.call} opera en ${st.mod}; su preset transmite en ${n.mod}.`, st);
+        if (st.sq === 'TONE' && n.sq !== 'TONE') return fail(`${st.call} usa squelch por tono: sin SQ = TONE su radio no envía el tono de 150 Hz y no le abren el squelch.`, st);
+      }
+      if (st.type === 'SINCGARS') {
+        if (s.hopTag !== st.hop) return fail('El hopset no coincide con el de la red SINCGARS.', st);
+        if (!s.todSinc) return fail('Sin hora de red SINCGARS no hay sincronización de saltos.', st);
+      }
+      if (st.type === 'HAVEQUICK') {
+        if (!s.todHQ) return fail('Sin TOD no es posible el salto HAVEQUICK.', st);
+        if (s.wodTag !== st.wod) return fail('La MWOD cargada para el día UTC actual no es la de la red.', st);
+      }
+      const encrypted = s.secure && n.crypto !== 'NONE';
+      if (st.type === 'SAT' && !encrypted) return fail('SATCOM en claro no está permitido: interruptor en CT y COMSEC ANDVT/VINSON.', st);
+      const cr = this.cryptoCheck(st, encrypted, n.crypto, s.keyTag);
+      if (cr) return fail(cr, st);
+      let quality = 'fuerte y claro';
+      if (st.type === 'SAT') {
+        const score = this.pointing(c);
+        if (score < 80) return fail(`Antena SATCOM mal apuntada (RSSI ${score}). Use la SOI (Az ${SATELLITE.az}°, El ${SATELLITE.el}°) y repita la prueba RSSI (CALL).`, st);
+        if (score < 90) quality = 'débil pero legible';
+      } else {
+        const range = s.rangeKm * (st.airborne ? 3 : 1);
+        const m = range / st.distanceKm;
+        if (m < 1) return fail(`Fuera de alcance: ${st.call} está a ${st.distanceKm} km y con ${s.powerW} W llega a unos ${Math.round(range)} km. Suba la potencia (PWR u OPT > POWER).`, st);
+        if (m < 1.4) quality = 'débil pero legible';
+      }
+      if (st.type === 'LOS' && !near(n.rx, st.freq)) return fail(`${st.call} le oye, pero su frecuencia de recepción (${n.rx.toFixed(5)}) no es la de la red: no oirá la respuesta.`, st);
+      return { ok: true, station: st, quality };
     }
 
+    evaluateDama(s) {
+      const st = this.stations.find((x) => x.type === 'DAMA');
+      if (!s.call || !s.call.dest.includes(st.netAddr)) return { ok: false, reason: 'La llamada DAMA activa no está dirigida a la red de Nodo Orión.' };
+      const encrypted = s.secure && s.cfg.crypto !== 'NONE';
+      const cr = this.cryptoCheck(st, encrypted, s.cfg.crypto, s.keyTag);
+      if (cr) return { ok: false, reason: cr, station: st };
+      return { ok: true, station: st, quality: 'fuerte y claro' };
+    }
+
+    // ---------------------------------------------------------------- DAMA (controlador)
+    damaAcquire(s) {
+      const c = s.conn;
+      if (c.j8 !== 'SATCOM') return { ok: false, reason: 'Sin antena SATCOM en J8' };
+      if (this.pointing(c) < 80) return { ok: false, reason: 'Antena mal apuntada' };
+      if (s.net.channel !== DAMA.channel) return { ok: false, reason: `El canal ${pad(s.net.channel, 3)} no es un canal DAMA de la SOI` };
+      if (s.net.ow === 'ON' && s.tskTag !== DAMA.owTsk) return { ok: false, reason: 'La TSK de orderwire no es la del controlador' };
+      return { ok: true };
+    }
+    damaLogin(s) {
+      if (!DAMA.knownTBA.includes(s.net.tba)) return { ok: false, code: 77, reason: `El controlador no tiene registrada la TBA ${pad(s.net.tba, 5)}` };
+      return { ok: true };
+    }
+    damaCall(s, { dest, prec }) {
+      const order = ['ROUTINE', 'PRIORITY', 'IMMEDIATE', 'FLASH', 'FLASH OVERRIDE', 'EMERGENCY ACTION'];
+      if (order.indexOf(prec) > order.indexOf(DAMA.maxPrecedence)) return { ok: false, code: 71, reason: 'Precedencia no autorizada' };
+      if (s.cfg.code25 !== '060' || s.cfg.crypto !== 'ANDVT') return { ok: false, code: 81, reason: 'Configuración no soportada: use ANDVT y código 060' };
+      if (!dest || !dest.ac25.includes(DAMA.networkAddr)) return { ok: false, code: 82, reason: 'Destino desconocido para el controlador' };
+      return { ok: true };
+    }
+
+    todAvailable(s) {
+      return !s.dama && s.net.type === 'HOP' && s.net.hop === 'HAVEQUICK' && s.conn.j8 === 'FLEX' && s.net.hqNet === '00.300';
+    }
+
+    // ---------------------------------------------------------------- tráfico
     later(ms, fn) {
       this._timers.push(this.env.setTimeout(fn, ms));
     }
 
+    describe(s) {
+      if (s.dama) return `DAMA ${s.presetNum}-${s.net.name} · canal ${pad(s.net.channel, 3)} · ${s.cfg.crypto}${s.keyTag ? ' ' + s.keyTag : ''}`;
+      const n = s.net;
+      const ch = n.type === 'LOS' ? `LOS ${n.mod} T ${n.tx.toFixed(5)} / R ${n.rx.toFixed(5)}`
+        : n.type === 'SAT' ? `SATCOM código ${pad(n.code, 3)} (${s.sat.bw} kHz)`
+          : n.hop === 'SINCGARS' ? `SINCGARS hopset ${pad(n.hopset)}${s.hopNetId != null ? ' F' + pad(s.hopNetId, 3) : ''}`
+            : `HAVEQUICK red ${n.hqNet}`;
+      const enc = s.secure && n.crypto !== 'NONE' ? `CT ${n.crypto}${s.keyTag ? ' ' + s.keyTag : ' (sin clave)'}` : 'PT';
+      return `${pad(s.presetNum)}-${n.name} · ${ch} · ${enc} · ${s.powerW} W`;
+    }
+
     onTransmit({ snapshot, text, dur }) {
-      this.emit('log', { dir: 'TX', from: this.env.myCall(), text: text || '(portadora sin mensaje)', meta: describeChannel(snapshot) });
+      this.emit('log', { dir: 'TX', from: this.env.myCall(), text: text || '(portadora sin mensaje)', meta: this.describe(snapshot) });
       if (dur < 400) {
-        this.emit('hint', 'Transmisión demasiado corta: mantenga pulsado el PTT mientras habla (al menos medio segundo).');
+        this.emit('hint', 'Transmisión demasiado corta: mantenga pulsado el PTT mientras habla.');
         return;
       }
       const r = this.evaluate(snapshot);
@@ -195,8 +240,7 @@
       const st = r.station;
       this.later(1400 + this.env.random() * 1200, () => {
         const reply = this.compose(st, r.quality, text);
-        const ok = this.radio.receive({ from: st.call, clear: true, dur: Math.max(2500, reply.length * 55) });
-        if (!ok) return;
+        if (!this.radio.receive({ from: st.call, clear: true, dur: Math.max(2500, reply.length * 55) })) return;
         this.contacts[st.id] = (this.contacts[st.id] || 0) + 1;
         this.emit('log', { dir: 'RX', from: st.call, text: reply, quality: r.quality });
         this.emit('contact', st.id);
@@ -208,27 +252,27 @@
       const t = (text || '').toLowerCase();
       let extra;
       if (/situaci|novedad|sitrep|reporte/.test(t)) extra = 'Reporte recibido, sin novedad en mi sector.';
-      else if (/prueba|verific|check|escucha|me recibe|recibe/.test(t)) extra = '';
+      else if (/prueba|verific|check|escucha|recibe/.test(t)) extra = '';
       else extra = st.replies[Math.floor(this.env.random() * st.replies.length)];
       return `${me}, aquí ${st.call}. Le recibo ${quality}.${extra ? ' ' + extra : ''} Cambio.`;
     }
 
-    /** Tráfico espontáneo de la red (llamar periódicamente). */
     tick() {
       const now = this.env.now();
       if (now < this.nextChatter) return;
       this.nextChatter = now + 35000 + this.env.random() * 35000;
       const radio = this.radio;
-      if (!radio.operating || radio.tx || radio.rx) return;
+      if (!radio.operating || radio.tx || radio.rx || radio.mode !== 'NORMAL') return;
       const s = radio.linkSnapshot();
-      const st = this.stations.find((x) => sameChannel(x, s.preset));
-      if (!st || !this.canHear(st, s)) return;
-      const msg = st.chatter[Math.floor(this.env.random() * st.chatter.length)];
-      if (this.decrypts(st, s)) {
+      const r = this.evaluate(s);
+      const st = r.station || this.findStation(s);
+      if (!st) return;
+      const msg = st.chatter[0];
+      if (r.ok) {
         if (radio.receive({ from: st.call, clear: true, dur: Math.max(2500, msg.length * 55) })) this.emit('log', { dir: 'RX', from: st.call, text: msg });
-      } else if (radio.receive({ from: st.call, clear: false, dur: 3000 })) {
+      } else if (st.crypto && radio.receive({ from: st.call, clear: false, dur: 3000 })) {
         this.emit('log', { dir: 'RX', from: '?', text: '[señal cifrada ininteligible]' });
-        this.emit('hint', `Está recibiendo tráfico cifrado de ${st.call}. Necesita estar en CT con la TEK de esa red.`);
+        this.emit('hint', `Está recibiendo tráfico cifrado de ${st.call}: ${r.reason}`);
       }
     }
 
@@ -240,6 +284,7 @@
   }
 
   Net.STATIONS = STATIONS;
-  Net.sameChannel = sameChannel;
+  Net.SATELLITE = SATELLITE;
+  Net.DAMA = DAMA;
   SIM.Net = Net;
 })(typeof window !== 'undefined' ? window : globalThis);

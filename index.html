@@ -11,7 +11,7 @@
   <header class="app-header">
     <div class="brand">
       <h1>Simulador AN/PRC-117F <span class="plus">+</span> SKL AN/PYQ-10</h1>
-      <p class="sub">Entrenador de operación de radio y carga de claves · uso educativo</p>
+      <p class="sub">Entrenador de operación de radio y carga COMSEC · uso educativo</p>
     </div>
     <div class="header-tools">
       <label class="field">Indicativo propio
@@ -24,76 +24,72 @@
   </header>
 
   <main class="layout">
+    <div class="col">
     <!-- ============================== RADIO ============================== -->
     <section class="card device-card" aria-labelledby="radio-title">
-      <h2 id="radio-title" class="card-title">Radio AN/PRC-117F</h2>
-      <div class="radio">
-        <div class="radio-top">
-          <div class="knob-wrap">
-            <div class="knob" id="func-knob" role="radiogroup" aria-label="Perilla de función">
-              <div class="knob-dial"><div class="knob-pointer"></div></div>
-              <button type="button" class="knob-pos" data-knob="Z" title="Zeroize (borrado de emergencia)">Z</button>
-              <button type="button" class="knob-pos" data-knob="OFF" title="Apagado">OFF</button>
-              <button type="button" class="knob-pos" data-knob="ON" title="Operación">ON</button>
-              <button type="button" class="knob-pos" data-knob="LD" title="Carga de claves">LD</button>
-              <button type="button" class="knob-pos" data-knob="RMT" title="Control remoto">RMT</button>
-            </div>
-            <span class="knob-label">FUNCIÓN</span>
+      <h2 id="radio-title" class="card-title">Radio AN/PRC-117F · RT-1796 (panel frontal)</h2>
+      <div class="rt">
+        <div class="rt-col rt-left">
+          <button type="button" class="conn-port big" id="port-j1" data-port="j1" title="J1 AUDIO/DATA/FILL: pulse para conectar microteléfono o SKL">
+            <span class="plabel">AUDIO/DATA/FILL<br>J1</span><span class="jack"><i></i></span><span class="pcable" id="j1-what"></span>
+          </button>
+          <div class="conn-port small"><span class="plabel">GPS J2</span><span class="jack"><i></i></span></div>
+          <div class="conn-port mid"><span class="plabel">DATA J3</span><span class="jack"><i></i></span></div>
+        </div>
+
+        <div class="kdu">
+          <div class="lcd-bezel"><div class="lcd" id="radio-lcd" aria-live="polite"></div></div>
+          <div class="kdu-keys" id="radio-keypad">
+            <button type="button" class="k" data-key="0"><b>0</b><small class="fn">⟳</small></button>
+            <button type="button" class="k" data-key="1"><b>1</b><sup>ABC</sup><small>CALL</small></button>
+            <button type="button" class="k" data-key="2"><b>2</b><sup>DEF</sup><small>LT</small></button>
+            <button type="button" class="k" data-key="3"><b>3</b><sup>GHI</sup><small>MODE</small></button>
+            <button type="button" class="k arr" data-key="LEFT" aria-label="Izquierda"><b>◀</b></button>
+            <button type="button" class="k arr" data-key="RIGHT" aria-label="Derecha"><b>▶</b></button>
+            <div class="rock vol"><button type="button" data-key="VOL+" aria-label="Subir volumen">+</button><span>VOL</span><button type="button" data-key="VOL-" aria-label="Bajar volumen">−</button></div>
+            <button type="button" class="k" data-key="4"><b>4</b><sup>JKL</sup><small>SQ</small></button>
+            <button type="button" class="k" data-key="5"><b>5</b><sup>MNO</sup><small>ZERO</small></button>
+            <button type="button" class="k" data-key="6"><b>6</b><sup>PQR</sup><small class="fn">▲</small></button>
+            <button type="button" class="k word" data-key="CLR"><b>CLR</b></button>
+            <div class="rock pre"><button type="button" data-key="PRE+" aria-label="Preset siguiente">+</button><span>PRE</span><button type="button" data-key="PRE-" aria-label="Preset anterior">−</button></div>
+            <button type="button" class="k" data-key="7"><b>7</b><sup>STU</sup><small>OPT</small></button>
+            <button type="button" class="k" data-key="8"><b>8</b><sup>VWX</sup><small>PGM</small></button>
+            <button type="button" class="k" data-key="9"><b>9</b><sup>YZ?</sup><small class="fn">▼</small></button>
+            <button type="button" class="k word" data-key="ENT"><b>ENT</b></button>
           </div>
-          <div class="ports">
-            <div class="port" id="port-ant"><span class="led"></span>ANT</div>
-            <div class="port" id="port-audio"><span class="led"></span>AUDIO</div>
-            <div class="port" id="port-fill"><span class="led"></span>FILL</div>
-          </div>
-          <div class="volume" aria-label="Volumen">
-            <button type="button" class="btn-round" id="vol-down" aria-label="Bajar volumen">−</button>
-            <div class="vol-meter"><span id="vol-value">4</span><small>VOL</small></div>
-            <button type="button" class="btn-round" id="vol-up" aria-label="Subir volumen">+</button>
+          <div class="kdu-name">KDU</div>
+        </div>
+
+        <div class="rt-col rt-mid">
+          <button type="button" class="conn-port big" id="port-j5" data-port="j5" title="J5 VHF ANTENNA (30-89,99999 MHz): pulse para poner o quitar la antena de pala">
+            <span class="plabel">VHF ANTENNA J5</span><span class="jack bnc"><i></i></span><span class="pcable" id="j5-what"></span>
+          </button>
+          <div class="fswitch" id="func-switch" role="radiogroup" aria-label="Interruptor de función">
+            <div class="fs-knob"><div class="fs-ptr"></div></div>
+            <button type="button" class="fs-pos" data-sw="OFF" title="Apagado (la HUB conserva programación y COMSEC)">OFF</button>
+            <button type="button" class="fs-pos boxed" data-sw="PT" title="Plain Text">PT</button>
+            <button type="button" class="fs-pos" data-sw="CT" title="Cipher Text">CT</button>
+            <button type="button" class="fs-pos" data-sw="TD" title="Time Delay">TD</button>
+            <button type="button" class="fs-pos" data-sw="RV" title="Receive Variable (OTAR/OTAT)">RV</button>
+            <button type="button" class="fs-pos" data-sw="LD" title="Load">LD</button>
+            <button type="button" class="fs-pos boxed" data-sw="ZALL" title="Zeroize all (COMSEC y TRANSEC)">Z-ALL</button>
+            <button type="button" class="fs-pos boxed" data-sw="CLR" title="Clear: borra todo y apaga">CLR</button>
           </div>
         </div>
 
-        <div class="lcd-bezel">
-          <div class="annunciators" id="radio-ann">
-            <span data-ann="TX">TX</span><span data-ann="RX">RX</span><span data-ann="CT">CT</span>
-            <span data-ann="LD">LD</span><span data-ann="BAT">BAT</span><span data-ann="MODE" class="mode"></span>
-          </div>
-          <div class="lcd" id="radio-lcd" aria-live="polite">
-            <div class="lcd-line"></div><div class="lcd-line"></div><div class="lcd-line"></div><div class="lcd-line"></div>
-          </div>
-        </div>
-
-        <div class="keypad" id="radio-keypad">
-          <button type="button" data-key="1">1</button>
-          <button type="button" data-key="2">2</button>
-          <button type="button" data-key="3">3</button>
-          <button type="button" data-key="PGM" class="fn">PGM</button>
-          <button type="button" data-key="4">4</button>
-          <button type="button" data-key="5">5</button>
-          <button type="button" data-key="6">6</button>
-          <button type="button" data-key="OPT" class="fn">OPT</button>
-          <button type="button" data-key="7">7</button>
-          <button type="button" data-key="8">8</button>
-          <button type="button" data-key="9">9</button>
-          <button type="button" data-key="MODE" class="fn">MODE</button>
-          <button type="button" data-key="CLR" class="fn">CLR</button>
-          <button type="button" data-key="0">0</button>
-          <button type="button" data-key="." aria-label="Punto decimal">.</button>
-          <button type="button" data-key="ENT" class="fn ent">ENT</button>
-          <button type="button" data-key="LEFT" class="nav" aria-label="Izquierda">◄</button>
-          <button type="button" data-key="UP" class="nav" aria-label="Arriba">▲</button>
-          <button type="button" data-key="DOWN" class="nav" aria-label="Abajo">▼</button>
-          <button type="button" data-key="RIGHT" class="nav" aria-label="Derecha">►</button>
-          <button type="button" data-key="PRE-" class="fn">PRE −</button>
-          <button type="button" data-key="PRE+" class="fn">PRE +</button>
-          <button type="button" data-key="CTPT" class="fn">CT/PT</button>
-          <button type="button" data-key="LUZ" class="fn">LUZ</button>
-          <button type="button" data-key="ZERO" class="fn danger wide">ZERO</button>
+        <div class="rt-col rt-right">
+          <button type="button" class="conn-port big" id="port-j8" data-port="j8" title="J8 VHF HI/UHF (90-511,99999 MHz): pulse para cambiar entre nada, antena flexible y antena SATCOM">
+            <span class="plabel">VHF HI/UHF J8</span><span class="jack bnc"><i></i></span><span class="pcable" id="j8-what"></span>
+          </button>
+          <div class="rt-plate">RT-1796(P)/PRC<br><small>RECEIVER/<br>TRANSMITTER</small></div>
+          <div class="conn-port mid"><span class="plabel">ACCESSORY J6</span><span class="jack"><i></i></span></div>
         </div>
       </div>
+      <div class="rt-bat"><span>Batería</span><i id="bat-meter"><b></b></i><span id="bat-text">100 %</span></div>
 
       <div class="handset" id="handset">
         <div class="handset-head">
-          <strong>Microteléfono</strong>
+          <strong>Microteléfono H-250</strong>
           <span id="handset-state" class="pill">desconectado</span>
         </div>
         <label class="field grow">Mensaje a transmitir
@@ -106,92 +102,87 @@
       </div>
     </section>
 
+      <!-- ============================== CONEXIONES ============================== -->
+      <section class="card" aria-labelledby="conn-title">
+        <h2 id="conn-title" class="card-title">Conexiones y accesorios</h2>
+        <div class="conn">
+          <fieldset class="seg">
+            <legend>J1 AUDIO/DATA/FILL (compartido: microteléfono o dispositivo de llenado)</legend>
+            <label><input type="radio" name="j1" value="NONE"> Nada</label>
+            <label><input type="radio" name="j1" value="HANDSET"> Microteléfono H-250</label>
+            <label><input type="radio" name="j1" value="SKL"> SKL (cable de llenado)</label>
+          </fieldset>
+          <fieldset class="seg">
+            <legend>J5 VHF LOW (30–89,99999 MHz)</legend>
+            <label><input type="checkbox" id="conn-j5"> Antena de pala VHF</label>
+          </fieldset>
+          <fieldset class="seg">
+            <legend>J8 VHF HI/UHF (90–511,99999 MHz)</legend>
+            <label><input type="radio" name="j8" value="NONE"> Nada</label>
+            <label><input type="radio" name="j8" value="FLEX"> Antena flexible VHF/UHF</label>
+            <label><input type="radio" name="j8" value="SATCOM"> Antena SATCOM</label>
+          </fieldset>
+          <fieldset class="seg pointing" id="pointing">
+            <legend>Apuntamiento de la antena SATCOM (ver SOI)</legend>
+            <label class="num">Azimut <input type="number" id="conn-az" min="0" max="359" step="1" value="0">°</label>
+            <label class="num">Elevación <input type="number" id="conn-el" min="0" max="90" step="1" value="0">°</label>
+          </fieldset>
+          <p class="muted small">El CIK va insertado en el SKL (no se retira en los procedimientos).</p>
+          <div class="battery">
+            <span>Batería de la radio</span>
+            <div class="bar"><div id="bat-bar"></div></div>
+            <span id="bat-text2">100 %</span>
+            <button type="button" id="bat-replace" class="btn small">Reemplazar</button>
+          </div>
+          <div class="battery">
+            <span>Batería del SKL</span>
+            <div class="bar"><div id="skl-bat-bar"></div></div>
+            <span id="skl-bat-text">100 %</span>
+            <button type="button" id="skl-bat-replace" class="btn small">Recargar</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div class="col">
-    <!-- ============================== SKL ============================== -->
-    <section class="card device-card" aria-labelledby="skl-title">
-      <h2 id="skl-title" class="card-title">SKL AN/PYQ-10</h2>
-      <div class="skl">
-        <div class="skl-screen" id="skl-screen" aria-live="polite"></div>
-        <div class="skl-controls">
-          <div class="cik-slot" id="cik-slot"><span class="led"></span>CIK</div>
-          <div class="cik-slot" id="skl-fill"><span class="led"></span>FILL</div>
-          <button type="button" id="skl-power" class="btn-power" aria-label="Encender o apagar el SKL">⏻</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============================== KYK-13 ============================== -->
-    <section class="card device-card" aria-labelledby="kyk-title">
-      <h2 id="kyk-title" class="card-title">KYK-13 (dispositivo de llenado DS-102)</h2>
-      <div class="kyk-wrap">
-        <div class="kyk">
-          <div class="kyk-plate">KYK-13 · ELECTRONIC TRANSFER DEVICE</div>
-          <div class="kyk-row">
-            <div class="kyk-group">
-              <span class="kyk-label">FUNCIÓN</span>
-              <div class="kyk-switch" role="radiogroup" aria-label="Interruptor de función del KYK-13">
-                <button type="button" data-kmode="ZALL" class="danger">Z ALL</button>
-                <button type="button" data-kmode="OFF">OFF / CHECK</button>
-                <button type="button" data-kmode="ON">ON</button>
-              </div>
-            </div>
-            <div class="kyk-group">
-              <span class="kyk-label">DIRECCIÓN</span>
-              <div class="kyk-addr" role="radiogroup" aria-label="Selector de dirección del KYK-13">
-                <button type="button" data-kaddr="1">1</button><button type="button" data-kaddr="2">2</button>
-                <button type="button" data-kaddr="3">3</button><button type="button" data-kaddr="4">4</button>
-                <button type="button" data-kaddr="5">5</button><button type="button" data-kaddr="6">6</button>
-              </div>
-            </div>
+      <!-- ============================== SKL ============================== -->
+      <section class="card device-card" aria-labelledby="skl-title">
+        <h2 id="skl-title" class="card-title">SKL AN/PYQ-10</h2>
+        <div class="skl">
+          <div class="skl-top">
+            <span class="kov" id="skl-kov" title="Luz KOV-21"><i></i><small>KOV</small></span>
+            <span class="fillport" id="skl-fill" title="Fill port"><i></i><small>FILL</small></span>
+            <button type="button" id="skl-zero" class="btn-zero" title="Botón de zeroize">Z</button>
+            <button type="button" id="skl-power" class="btn-power" aria-label="Botón de encendido">⏻</button>
           </div>
-          <div class="kyk-row bottom">
-            <div class="kyk-lamp-wrap"><span class="kyk-lamp" id="kyk-lamp"></span><span class="kyk-label">PARIDAD</span></div>
-            <div class="cik-slot" id="kyk-fill"><span class="led"></span>J1 FILL</div>
-            <button type="button" id="kyk-init" class="kyk-init">INICIAR</button>
+          <div class="skl-face">
+            <div class="skl-screen" id="skl-screen" aria-live="polite"></div>
+            <div class="cik-slot" id="cik-slot" title="CIK"><span class="led"></span>CIK</div>
+          </div>
+          <div class="skl-pad">
+            <button type="button" data-hw="1" title="Abrir/cerrar el menú Inicio">1</button>
+            <button type="button" data-hw="2" title="Abrir la aplicación seleccionada (UAS)">2</button>
+            <button type="button" class="dir up" data-hw="UP" aria-label="Arriba">▲</button>
+            <button type="button" data-hw="3" title="Modo visión nocturna">3</button>
+            <button type="button" data-hw="4" title="Activa la cruceta">4</button>
+            <button type="button" class="dir" data-hw="LEFT" aria-label="Izquierda">◀</button>
+            <button type="button" class="dir ok" data-hw="OK" aria-label="Aceptar">●</button>
+            <button type="button" class="dir" data-hw="RIGHT" aria-label="Derecha">▶</button>
+            <button type="button" class="bri" data-hw="BRIGHT-" aria-label="Menos brillo">☼−</button>
+            <button type="button" class="dir down" data-hw="DOWN" aria-label="Abajo">▼</button>
+            <button type="button" class="bri" data-hw="BRIGHT+" aria-label="Más brillo">☼+</button>
           </div>
         </div>
-        <p class="kyk-msg" id="kyk-msg" aria-live="polite"></p>
-        <details class="guide" open>
-          <summary>Hoja de claves del custodio</summary>
-          <table class="kyk-table"><thead><tr><th>Pos.</th><th>Clave</th><th>Tipo</th><th>Uso</th></tr></thead><tbody id="kyk-sheet"></tbody></table>
-        </details>
-      </div>
-    </section>
+      </section>
 
-    <!-- ============================== CONEXIONES ============================== -->
-    <section class="card" aria-labelledby="conn-title">
-      <h2 id="conn-title" class="card-title">Conexiones y accesorios</h2>
-      <div class="conn">
-        <fieldset class="seg">
-          <legend>Antena de la radio</legend>
-          <label><input type="radio" name="antenna" value="NONE" checked> Ninguna</label>
-          <label><input type="radio" name="antenna" value="WHIP"> Látigo VHF/UHF</label>
-          <label><input type="radio" name="antenna" value="SATCOM"> SATCOM</label>
-        </fieldset>
-        <fieldset class="seg">
-          <legend>Conector FILL de la radio cableado a</legend>
-          <label><input type="radio" name="filldev" value="NONE" checked> Nada</label>
-          <label><input type="radio" name="filldev" value="SKL"> SKL</label>
-          <label><input type="radio" name="filldev" value="KYK13"> KYK-13</label>
-        </fieldset>
-        <div class="toggles">
-          <label class="switch"><input type="checkbox" id="conn-sklkyk"> Cable SKL ↔ KYK-13</label>
-          <label class="switch"><input type="checkbox" id="conn-handset"> Microteléfono (AUDIO)</label>
-          <label class="switch"><input type="checkbox" id="conn-cik"> CIK insertado en el SKL</label>
-        </div>
-        <div class="battery">
-          <span>Batería de la radio</span>
-          <div class="bar"><div id="bat-bar"></div></div>
-          <span id="bat-text">100 %</span>
-          <button type="button" id="bat-replace" class="btn small">Reemplazar</button>
-        </div>
-      </div>
-    </section>
     </div>
 
     <!-- ============================== EJERCICIOS ============================== -->
     <section class="card" aria-labelledby="sc-title">
-      <h2 id="sc-title" class="card-title">Ejercicios</h2>
+      <div class="card-head">
+        <h2 id="sc-title" class="card-title">Ejercicios</h2>
+        <button type="button" id="btn-extdb" class="btn small ghost" title="Añade al SKL el material de los ejercicios LOS cifrado, DAMA, SINCGARS y HAVEQUICK">Cargar BD ampliada en el SKL</button>
+      </div>
       <div class="sc-list" id="sc-list"></div>
       <div class="sc-detail" id="sc-detail"></div>
     </section>
@@ -203,22 +194,22 @@
         <button type="button" id="log-clear" class="btn small ghost">Limpiar</button>
       </div>
       <ol class="log" id="log" aria-live="polite"></ol>
-      <details class="guide">
-        <summary>Orden de comunicaciones del ejercicio (estaciones de la red)</summary>
+      <details class="guide" open>
+        <summary>SOI de entrenamiento (estaciones, satélite y DAMA)</summary>
         <ul id="stations"></ul>
       </details>
       <details class="guide">
-        <summary>Guía rápida del teclado</summary>
+        <summary>Guía rápida del KDU</summary>
         <ul>
-          <li><b>Perilla</b>: OFF · ON (operación) · LD (recibir claves del SKL) · RMT (remoto, panel bloqueado) · Z (borrado de emergencia, vuelve sola).</li>
-          <li><b>PGM</b>: programación (presets, claves, TOD, autoprueba). <b>OPT</b>: opciones (squelch, luz, tono, potencia).</li>
-          <li><b>▲▼</b> moverse · <b>ENT</b> aceptar · <b>CLR</b> volver/borrar · <b>◄►</b> cambiar opción.</li>
-          <li><b>PRE + / PRE −</b> cambiar de preset · un número + ENT va directo a ese preset.</li>
-          <li><b>CT/PT</b> alterna cifrado / claro · <b>MODE</b> cambia de modo · <b>ZERO</b> borra todas las claves.</li>
-          <li><b>Modo cripto</b> (en el preset, con CIFRADO = CT): <b>VINSON</b> (voz 16 kbps, canales de 25 kHz) o <b>ANDVT</b> (voz 2,4 kbps, obligatorio en SATCOM de 5 kHz). La TEK debe ser del mismo algoritmo.</li>
-          <li><b>SATCOM dedicado</b>: FREC TX = subida (292–318 MHz), FREC RX = bajada (243–270 MHz), canal 5K/25K. <b>SATCOM DAMA</b>: satélite, red, dirección de terminal y PGM &gt; ACCESO DAMA antes de transmitir.</li>
-          <li><b>KYK-13</b>: OFF/CHECK + INICIAR comprueba la posición (la lámpara destella si hay clave) · ON + INICIAR transfiere la posición a la radio en LD · Z ALL borra todo.</li>
-          <li>Teclado del ordenador: dígitos, punto, Intro = ENT, Retroceso/Esc = CLR, flechas, P = PGM, O = OPT, M = MODE, C = CT/PT, +/− = preset, barra espaciadora = PTT.</li>
+          <li><b>Interruptor</b>: OFF · PT (claro) · CT (cifrado) · TD (como CT, sincronismo VINSON de 800 ms) · RV (OTAR/OTAT) · LD (carga) · Z-ALL (borra datos rojos) · CLR (borra todo y apaga).</li>
+          <li><b>Teclas de doble función</b>: 0 ⟳ (siguiente pantalla) · 1 CALL · 2 LT · 3 MODE · 4 SQ · 5 ZERO · 6 ▲ · 7 OPT · 8 PGM · 9 ▼. En campos numéricos son dígitos y en nombres, letras (1ABC, 2DEF…).</li>
+          <li><b>Conectores</b>: pulse J1, J5 o J8 en el panel para conectar el microteléfono/SKL o las antenas.</li>
+          <li><b>Menús</b>: ◄ ► eligen elemento («USE &lt; &gt; TO SELECT ITEM») · ENT entra · CLR vuelve. <b>Listas</b>: 6▲ / 9▼ y ENT.</li>
+          <li><b>Campos numéricos</b>: se teclean los dígitos sobre el valor; ◄ ► mueven el cursor; CLR pone a cero y retrocede.</li>
+          <li><b>Nombres</b>: entrada multitecla (1=ABC, 2=DEF… 6=PQR); ► para dos letras de la misma tecla.</li>
+          <li><b>PRE ±</b>: recorre los presets activos; dentro de la programación, sale a la operación.</li>
+          <li><b>Teclado del ordenador</b>: dígitos, Intro = ENT, Esc/Retroceso = CLR, flechas, AvPág/RePág = PRE ±, barra espaciadora = PTT.</li>
+          <li><b>SKL</b>: botón 1 = menú Inicio · 2 = abrir la UAS · 3 = visión nocturna · cruceta = moverse por el árbol · doble toque en una clave = información del segmento.</li>
         </ul>
       </details>
     </section>
@@ -227,14 +218,13 @@
   <div class="toasts" id="toasts" aria-live="assertive"></div>
 
   <footer class="app-footer">
-    Simulador con fines educativos. No está afiliado a ningún fabricante ni organismo.
-    Todas las claves, frecuencias, estaciones e indicativos son ficticios y no contiene material criptográfico real.
+    Simulador con fines educativos. No está afiliado a ningún fabricante ni organismo y no sustituye a los manuales oficiales.
+    Todas las claves, frecuencias, estaciones, direcciones e indicativos son ficticios; no contiene material criptográfico real.
   </footer>
 
   <script src="js/core.js"></script>
   <script src="js/radio.js"></script>
   <script src="js/skl.js"></script>
-  <script src="js/kyk13.js"></script>
   <script src="js/net.js"></script>
   <script src="js/scenarios.js"></script>
   <script src="js/audio.js"></script>

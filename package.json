@@ -1,11 +1,76 @@
 {
   "name": "simulador-prc117f-skl",
-  "version": "1.0.0",
+  "productName": "Simulador PRC-117F SKL",
+  "version": "2.3.1",
   "description": "Simulador de entrenamiento de la radio AN/PRC-117F y del cargador de claves SKL AN/PYQ-10",
+  "author": "hector9414",
   "private": true,
+  "main": "desktop/main.js",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "start": "python3 -m http.server 8080"
+    "web": "python3 -m http.server 8080",
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable nsis --x64 --publish never",
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --publish never"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.hector9414.simprc117f",
+    "productName": "Simulador PRC-117F SKL",
+    "copyright": "Uso educativo",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "desktop/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-${arch}-${target}.${ext}"
+    },
+    "portable": {
+      "artifactName": "SimuladorPRC117F-SKL-${version}-portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Simulador PRC-117F SKL",
+      "artifactName": "SimuladorPRC117F-SKL-${version}-instalador.exe",
+      "language": "3082"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Education",
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "SimuladorPRC117F-SKL-${version}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.education",
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "SimuladorPRC117F-SKL-${version}.${ext}"
+    }
+  }
 }
