@@ -711,3 +711,51 @@ test('PGM NET: ACTIVATE IN LIST? sale en pantalla en cuanto se elige la red; CLR
   assert.equal(t.radio.screen.title, 'FILL MENU');
   assert.equal(SIM.plain(t.radio.display().text[1]).trim(), 'FILL DEVICE');
 });
+
+test('varias llaves sin «Display for Every Key»: Status registra cada llave; la radio recuerda la selección', () => {
+  const t = setup();
+  on(t, 'PT');
+  sklLogin(t);
+  t.radio.setSwitch('LD');
+  t.tick(10);
+  t.conn.j1 = 'SKL';
+  choose(t, 'KYK-13');
+  choose(t, 'ANDVT');
+  choose(t, 'TEK');
+  num(t, '03');
+  assert.equal(t.radio.screen.stage, 'READY');
+  const now = new Date(t.clock.now());
+  const k1 = `ABD 02 5AT900|A|${now.getMonth() + 1}`;
+  const k2 = `ABD 02 5AT900|A|${((now.getMonth() + 1) % 12) + 1}`;
+  t.skl.act('tab', 'KEYS');
+  t.skl.act('cmd', 'loadSelectedKeys');
+  dlg(t, 'OK', { keys: [k1, k2] });
+  dlg(t, 'OK', { protocol: 'DS-102', activate: 'DS-102' });
+  dlg(t, 'OK', { every: false }); // Ready to Send Key solo una vez
+  press(t, 'ENT');
+  t.tick(3000);
+  assert.equal(t.radio.screen.stage, 'DONE');
+  assert.equal(t.radio.keys.ANDVT.TEK[2].tag, 'ABD 02 5AT900 A-' + (now.getMonth() + 1));
+  // MORE FILL DATA? YES -> el menú FILL conserva KYK-13 / ANDVT / TEK / 03
+  press(t, 'ENT');
+  press(t, 'ENT');
+  assert.equal(SIM.plain(t.radio.display().text[2]).trim(), 'KYK-13');
+  press(t, 'ENT');
+  assert.equal(SIM.plain(t.radio.display().text[2]).trim(), 'ANDVT');
+  press(t, 'ENT');
+  assert.equal(SIM.plain(t.radio.display().text[2]).trim(), 'TEK');
+  press(t, 'ENT');
+  assert.match(SIM.plain(t.radio.display().text[2]), /03/);
+  press(t, '0', '4', 'ENT');
+  // el SKL sigue en la misma ventana Status, sin volver a preguntar
+  assert.equal(t.skl.dlg.type, 'STATUS');
+  press(t, 'ENT');
+  t.tick(3000);
+  assert.equal(t.radio.keys.ANDVT.TEK[3].tag, 'ABD 02 5AT900 A-' + (((now.getMonth() + 1) % 12) + 1));
+  const st = t.skl.dialogs.find((d) => d.type === 'STATUS');
+  assert.deepEqual(st.lines.map((l) => l.replace(/ABD 02 5AT900 A-\d+/, 'K')), [
+    'Press INITIATE Button....', 'Transmit In Progress ....', 'Key K loaded successfully.',
+    'Press INITIATE Button....', 'Transmit In Progress ....', 'Key K loaded successfully.',
+    'Operation Successful.',
+  ]);
+});

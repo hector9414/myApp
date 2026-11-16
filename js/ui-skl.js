@@ -269,7 +269,7 @@
         `<span class="grow"></span>${B('OK', { def: true })}${B('Cancel')}<span class="grow"></span>`, { sub: 'Connect to Receive Equipment', full: true, type: 'READY' });
       }
       case 'STATUS': {
-        const lines = d.kind === 'ICOM' ? (skl.icom ? skl.icom.lines : ['Operation Successful.']) : skl.send ? skl.send.lines : ['Operation Successful.'];
+        const lines = d.kind === 'ICOM' ? (skl.icom ? skl.icom.lines : ['Operation Successful.']) : skl.send ? skl.send.lines : (d.lines || ['Operation Successful.']);
         return statusWin(lines, d.done);
       }
       case 'RELOAD':

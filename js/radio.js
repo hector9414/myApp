@@ -1165,7 +1165,8 @@
 
     // ================================================================ LD: carga de claves
     fillMenu() {
-      const req = { device: 'KYK-13', crypto: 'VINSON', keyType: 'TEK', num: 1 };
+      // MORE FILL DATA? YES conserva la última selección (dispositivo, cripto, tipo y número)
+      const req = Object.assign({ device: 'KYK-13', crypto: 'VINSON', keyType: 'TEK', num: 1 }, this.lastFill || {});
       this.fillReq = req;
       const numMax = () => (req.keyType === 'WOD' ? 31 : 25);
       const noNum = () => req.device === 'CYZ10-RDS' || req.keyType === 'KEK' || req.keyType === 'TRKEK';
@@ -1183,7 +1184,10 @@
         Object.assign(this.f.num('KEY NUMBER', '##', () => req.num, (v) => { req.num = v; }, (v) => (v >= 1 && v <= numMax() ? null : `KEY 01-${numMax()}`), {
           suffix: () => (req.keyType === 'WOD' ? '(DIA)' : ''),
         }), { skip: noNum }),
-      ], () => this.go({ id: 'FILL', stage: 'READY', req: Object.assign({}, req) }));
+      ], () => {
+        this.lastFill = Object.assign({}, req);
+        this.go({ id: 'FILL', stage: 'READY', req: Object.assign({}, req) });
+      });
     }
 
     fillLabel(req) {

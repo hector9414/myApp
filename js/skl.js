@@ -719,8 +719,11 @@
       this.beginWait();
     }
     beginWait() {
+      const first = this.send.settings.protocol === 'DS-101' ? 'Attempting to Connect .....' : 'Press INITIATE Button....';
       this.send.stage = 'WAIT';
-      this.send.lines = [this.send.settings.protocol === 'DS-101' ? 'Attempting to Connect .....' : 'Press INITIATE Button....'];
+      // sin «Display for Every Key» la ventana Status sigue abierta y acumula el registro de cada llave
+      if (this.send.idx > 0 && !this.displayEvery) this.send.lines.push(first);
+      else this.send.lines = [first];
       if (!this.dialogs.some((d) => d.type === 'STATUS')) this.push({ type: 'STATUS', kind: 'KEY', done: false });
     }
     d_STATUS(btn, f, d) {
@@ -984,16 +987,22 @@
       this.dirty = true;
       this.after(900, () => {
         if (this.send !== s) return;
+        s.lines.push(`Key ${key.tag} loaded successfully.`);
         s.idx++;
         if (s.idx < s.queue.length) {
           s.stage = 'READY';
-          s.lines = [];
-          this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
+          if (this.displayEvery) {
+            s.lines = [];
+            this.dialogs = this.dialogs.filter((d) => d.type !== 'STATUS');
+          }
           this.nextKeyStep();
         } else {
-          s.lines = ['Operation Successful.'];
+          s.lines.push('Operation Successful.');
           const sd = this.dialogs.find((d) => d.type === 'STATUS');
-          if (sd) sd.done = true;
+          if (sd) {
+            sd.done = true;
+            sd.lines = s.lines.slice();
+          }
           this.send = null;
           this.msgBox('SKL', 'Operation Successful.', '!');
         }
