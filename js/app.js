@@ -170,11 +170,15 @@
       const savedText = {};
       if (dlgKey && dlgKey === lastDlgKey) el.querySelectorAll('.ce-dlg input[type="text"], .ce-dlg input[type="password"]').forEach((i) => { savedText[i.name] = i.value; });
       const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.name : null;
+      // conserva la posición de desplazamiento de listas y árbol al redibujar
+      const scrolls = [...el.querySelectorAll('.ce-list, .ce-tree, .ce-area, .ce-body')].map((n) => n.scrollTop);
       lastSkl = html;
       el.innerHTML = html;
+      if (dlgKey === lastDlgKey) [...el.querySelectorAll('.ce-list, .ce-tree, .ce-area, .ce-body')].forEach((n, i) => { if (scrolls[i]) n.scrollTop = scrolls[i]; });
       if (dlgKey && dlgKey === lastDlgKey) {
         el.querySelectorAll('.ce-dlg input').forEach((i) => {
           if (i.type === 'checkbox' || i.type === 'radio') {
+            if (i.dataset.live) return; // las casillas «en vivo» ya vienen del modelo (Select All, Deselect All…)
             const k = i.name + ':' + i.type + ':' + i.value;
             if (k in saved) i.checked = saved[k];
           } else if (i.name in savedText) i.value = savedText[i.name];
@@ -540,6 +544,11 @@
     renderAll();
   });
   $('#log-clear').addEventListener('click', () => { logEl.innerHTML = ''; });
+  $('#btn-expdb').addEventListener('click', () => {
+    const n = skl.loadExpiredKeys();
+    toast(n ? `SKL: ${n} llaves caducadas creadas (ABD 01 5AT900, RED KEY).` : 'El SKL ya tiene todas las llaves caducadas de ABD 01 5AT900.', n ? 'ok' : '');
+    if (n) addLog({ dir: 'INFO', text: `Instructor: ${n} llaves caducadas creadas en el SKL (ABD 01 5AT900).` });
+  });
   $('#btn-extdb').addEventListener('click', () => {
     skl.loadExtendedDb();
     toast('BD ampliada cargada en el SKL: LOS VINSON, TSK DAMA, MWOD y el loadset del RT1 PRC117F (pestaña Plats).', 'ok');

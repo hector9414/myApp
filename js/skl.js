@@ -62,8 +62,11 @@
         eff: d.getTime(), exp: new Date(d.getFullYear(), m + 1, 1).getTime() - 1,
       });
     });
-    return [...year(EXP_ST, -12), ...year(SAT_ST, 0)];
+    return [...year(EXP_ST, -12), ...year(SAT_ST, 0)].sort(keyOrder);
   }
+
+  /** Orden del SKL: Short Title, edición y número de segmento (1, 2, 3 …). */
+  const keyOrder = (a, b) => a.st.localeCompare(b.st) || String(a.edition).localeCompare(String(b.edition)) || a.segment - b.segment;
 
   /** Material adicional para los demás ejercicios (botón del instructor). */
   function extendedKeys(now) {
@@ -172,11 +175,24 @@
       if (this.extended) return;
       const ids = new Set(this.keys.map((k) => k.id));
       extendedKeys(this.env.now()).forEach((k) => { if (!ids.has(k.id)) this.keys.push(k); });
+      this.keys.sort(keyOrder);
       this.loadset = extendedLoadset();
       this.extended = true;
       this.expanded.add('plat:CDR HMMV');
       this.log('Database received (training material).');
       this.changed();
+    }
+
+    /** Instructor: vuelve a crear el Short Title caducado ABD 01 (12 segmentos, RED KEY). */
+    loadExpiredKeys() {
+      const ids = new Set(this.keys.map((k) => k.id));
+      const add = defaultKeys(this.env.now()).filter((k) => k.st === EXP_ST && !ids.has(k.id));
+      this.keys.push(...add);
+      this.keys.sort(keyOrder);
+      this.expanded.add(`st:${EXP_ST}`);
+      if (add.length) this.log(`Database received: ${add.length} expired segments (${EXP_ST}).`);
+      this.changed();
+      return add.length;
     }
 
     // ---------------------------------------------------------------- utilidades
@@ -670,7 +686,8 @@
     }
     d_KEY_SELECT(btn, f, d) {
       if (btn === 'Cancel') return this.pop();
-      const selectable = this.keys.filter((k) => this.keyStatus(k) !== 'TAG' && this.keyStatus(k) !== 'EXPTAG');
+      // Select All marca solo las llaves que se pueden cargar (no las caducadas ni las KEY TAG)
+      const selectable = this.keys.filter((k) => !['TAG', 'EXPTAG', 'RED'].includes(this.keyStatus(k)));
       if (btn === 'Select All') {
         d.checked = selectable.map((k) => k.id);
         return;
@@ -935,7 +952,7 @@
     }
     c_loadSelectedKeys() {
       if (this.tab !== 'KEYS') return this.msgBox('SKL', 'Load Selected Keys is only available from the Keys tab.', 'i');
-      this.push({ type: 'KEY_SELECT', checked: [], order: this.keys.map((k) => k.id), focus: null });
+      this.push({ type: 'KEY_SELECT', checked: [], order: this.keys.slice().sort(keyOrder).map((k) => k.id), focus: null });
     }
     c_recv() {
       this.msgBox('SKL', 'Receive: función no simulada en el entrenador.', 'i');
@@ -1108,7 +1125,7 @@
       if (!o || typeof o !== 'object' || o.v !== 5) return;
       if (o.card === 'UNINIT' || o.card === 'READY') this.card = o.card;
       if (o.accounts && typeof o.accounts === 'object') this.accounts = o.accounts;
-      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.st);
+      if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.st).sort(keyOrder);
       if (o.loadset === null || (o.loadset && Array.isArray(o.loadset.hopsets))) this.loadset = o.loadset;
       if (typeof o.extended === 'boolean') this.extended = o.extended;
       if (Array.isArray(o.audit)) this.audit = o.audit.filter((a) => a && a.text);

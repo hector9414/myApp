@@ -587,14 +587,14 @@ test('SKL: logon, orden de salida, Reset Card, fallos de logon, auditoría solo 
   const old = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:ABD 01'));
   assert.equal(old.length, 12);
   assert.ok(old.every((n) => n.icon === 'RED'));
-  assert.equal(old[0].label, '11-T000-11-NOV TEK'); // noviembre del año pasado
+  assert.deepEqual(old.map((n) => n.label.split('-')[0]), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']); // ordenados por segmento
   t.skl.act('toggle', 'st:ABD 02 5AT900');
   t.skl.act('toggle', 'ed:ABD 02 5AT900|A');
   const segs = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:ABD 02'));
   assert.equal(segs.length, 12);
-  assert.equal(segs[0].label, '11-T000-11-NOV TEK');
-  assert.equal(segs[0].icon, 'YELLOW');
-  assert.ok(segs.slice(1).every((n) => n.icon === 'PENDING'));
+  assert.equal(segs[10].label, '11-T000-11-NOV TEK');
+  assert.equal(segs[10].icon, 'YELLOW');
+  assert.ok(segs.filter((n, i) => i !== 10).every((n) => n.icon === 'PENDING'));
   t.skl.act('open', 'seg:' + SAT(t));
   assert.equal(t.skl.dlg.type, 'SEGMENT');
   dlg(t, 'Close');
@@ -758,4 +758,28 @@ test('varias llaves sin «Display for Every Key»: Status registra cada llave; l
     'Press INITIATE Button....', 'Transmit In Progress ....', 'Key K loaded successfully.',
     'Operation Successful.',
   ]);
+});
+
+test('Key Load Select Keys: orden por segmento, Select All sin caducadas; botón de llaves expiradas', () => {
+  const t = setup();
+  on(t, 'PT');
+  sklLogin(t);
+  t.skl.act('tab', 'KEYS');
+  t.skl.act('cmd', 'loadSelectedKeys');
+  const d = t.skl.dlg;
+  assert.equal(d.order[0], 'ABD 01 5AT900|A|1');
+  assert.equal(d.order[12], 'ABD 02 5AT900|A|1');
+  assert.equal(d.order[23], 'ABD 02 5AT900|A|12');
+  dlg(t, 'Select All');
+  assert.equal(t.skl.dlg.checked.length, 12); // solo ABD 02 (las de ABD 01 están caducadas)
+  assert.ok(t.skl.dlg.checked.every((id) => id.startsWith('ABD 02')));
+  dlg(t, 'OK', { keys: t.skl.dlg.checked });
+  assert.equal(t.skl.dlg.type, 'KEY_SETTINGS');
+  t.skl.dialogs = [];
+  // borrar las caducadas y volver a crearlas con el botón del instructor
+  t.skl.keys = t.skl.keys.filter((k) => k.st !== 'ABD 01 5AT900');
+  assert.equal(t.skl.loadExpiredKeys(), 12);
+  assert.equal(t.skl.keys.filter((k) => k.st === 'ABD 01 5AT900' && t.skl.keyStatus(k) === 'RED').length, 12);
+  assert.equal(t.skl.keys[0].id, 'ABD 01 5AT900|A|1');
+  assert.equal(t.skl.loadExpiredKeys(), 0);
 });

@@ -510,3 +510,4 @@ select { font: inherit; }
 .ce-pen, .ce-kbd { width: 20px; height: 18px; border: 1px solid #333; padding: 0; }
 .ce-pen { background: linear-gradient(135deg, transparent 45%, #d10000 45% 55%, transparent 55%), #fff; }
 .ce-kbd { background: repeating-linear-gradient(90deg, #fff 0 3px, #333 3px 4px), #fff; }
+.head-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }

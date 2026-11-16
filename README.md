@@ -98,7 +98,7 @@ equipo; el botón «Reiniciar todo» vuelve al estado inicial.
 - **Base de datos por defecto** (sigla **ABD**, cuenta 5AT900): dos Short Titles SATCOM de 12 segmentos mensuales cada uno (el número de segmento es el del mes: `11-T000-11-NOV TEK`):
   - **`ABD 01 5AT900`**: los 12 meses anteriores, todas **caducadas** (RED KEY), para practicar Expired Keys.
   - **`ABD 02 5AT900`**: el mes en curso (llave amarilla, la que usan las redes SATCOM y DAMA) y los 11 siguientes.
-- **BD ampliada** (botón «Cargar BD ampliada en el SKL» en la tarjeta de ejercicios): añade TEK LOS VINSON (ABD 05), un segmento caducado (ABD 06), TSK EOW (ABD 07), MWOD (ABD 50), una KEY TAG sin variable (ABD 60), KEK (ABD 04) y el loadset **RT1 PRC117F** (Plats / Eqs) con TEK, KEK y hopsets SINCGARS.
+- **BD ampliada** (botón «Cargar BD ampliada en el SKL» en la tarjeta de ejercicios; el botón «Crear llaves expiradas en el SKL» vuelve a crear ABD 01 5AT900 si se borró): añade TEK LOS VINSON (ABD 05), un segmento caducado (ABD 06), TSK EOW (ABD 07), MWOD (ABD 50), una KEY TAG sin variable (ABD 60), KEK (ABD 04) y el loadset **RT1 PRC117F** (Plats / Eqs) con TEK, KEK y hopsets SINCGARS.
 - **Carga de claves** (como en el TM):
   1. **Key Load Select Keys**: casillas, Select All / Deselect All / Up / Down.
   2. **Key Load Settings**: Protocol (DS-102 / DS-101 / RS-232), Activate Mode (DS-102, KYK-13, KYX-15, KEMPLE, KOI-18, NCD LD), Bus Address, Baud Rate, Send WakeUp, Send Tag, Seconds, Mode (Fill / Issue) y Timeout.
