@@ -147,9 +147,9 @@ button.conn-port:hover .jack { box-shadow: 0 0 0 2px var(--accent); }
   color: #eef0e2; display: grid; place-items: center; position: relative; padding: 0; touch-action: manipulation; user-select: none;
   box-shadow: 0 2px 0 #0d0f08; min-width: 0;
 }
-.k b { font: 700 clamp(12px, 4.3cqw, 20px)/1 Arial, sans-serif; margin-top: -2cqw; }
-.k sup { position: absolute; top: 8%; right: 12%; font: 700 clamp(6px, 1.75cqw, 8px)/1 Arial, sans-serif; color: #d9dcc6; }
-.k small { position: absolute; bottom: 13%; font: 700 clamp(6.5px, 1.9cqw, 8.5px)/1 Arial, sans-serif; color: #f2e3a6; letter-spacing: .3px; }
+.k b { font: 700 clamp(13px, 4.6cqw, 21px)/1 Arial, sans-serif; margin-top: -.6cqw; }
+.k sup { position: absolute; top: 9%; left: 0; right: 0; text-align: center; font: 700 clamp(8.5px, 2.5cqw, 11px)/1 Arial, Helvetica, sans-serif; color: #ffffff; letter-spacing: .04em; }
+.k small { position: absolute; bottom: 11%; left: 0; right: 0; text-align: center; font: 700 clamp(8.5px, 2.6cqw, 11.5px)/1 Arial, Helvetica, sans-serif; color: #f2e3a6; letter-spacing: .3px; }
 .k small.fn { font-size: 10px; color: #f2f2e8; }
 .k.word b { font-size: clamp(10px, 3.2cqw, 14px); margin-top: 0; }
 .k.arr b { font-size: clamp(12px, 3.8cqw, 17px); margin-top: 0; }

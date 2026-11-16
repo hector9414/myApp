@@ -231,7 +231,10 @@
       if (screen.id === 'WIZ') this.initEdit();
     }
     back() {
-      this.screen = this.stack.pop() || { id: 'MAIN' };
+      // sin pantallas anteriores se vuelve a la pantalla base de la posición del
+      // interruptor: en LD el menú FILL (nunca la pantalla principal), en RV la de RV
+      if (!this.stack.length) return this.home();
+      this.screen = this.stack.pop();
       if (this.screen.id === 'WIZ') this.initEdit();
     }
     home() {
@@ -406,7 +409,10 @@
         this.mode = 'DAMA';
         this.after(0, () => this.startDama());
       } else if (v === 'TEST') {
-        this.after(0, () => this.go(this.menuTEST()));
+        this.after(0, () => {
+          this.go(this.menuTEST());
+          this.changed();
+        });
       } else {
         this.flash('MODO NO SIMULADO');
       }
@@ -627,7 +633,8 @@
       let sel = this.cur;
       return this.f.num('SELECT NET TO MODIFY', '##', () => sel, (v) => {
         sel = v;
-        this.after(0, () => this.programNet(v));
+        this.back(); // quita «SELECT NET TO MODIFY»: CLR vuelve al menú NORM
+        this.programNet(v); // abre ACTIVATE IN LIST? en el acto
       }, (v) => (v >= 0 && v < NUM_NETS ? null : 'NET 00-99'), { suffix: (v) => `[${this.nets[v] ? this.nets[v].name : ''}]` });
     }
 
@@ -903,10 +910,8 @@
 
     selectIdxField(label, tmpl, max, list, open) {
       return this.f.num(label, tmpl, () => 0, (v) => {
-        this.after(0, () => {
-          open(v);
-          this.changed();
-        });
+        this.back();
+        open(v);
       }, (v) => (v >= 0 && v < max ? null : 'FUERA DE RANGO'), { suffix: (v) => (list[v] ? `[${list[v].name}]` : '') });
     }
 
@@ -1578,7 +1583,10 @@
       const start = Math.max(0, Math.min(r, rows.length - 2));
       const lines = rows.slice(start, start + 2).map((rr) => rr.map((i) => (i === s.idx ? blink(items[i].label) : items[i].label)).join('  '));
       while (lines.length < 2) lines.push('');
-      return { status: { title: '' }, rows: [{ l: lines[0] }, { l: lines[1] }], foot: { l: s.ctx || '', c: 'USE < > TO SELECT ITEM' } };
+      // flechas de desplazamiento: hay más opciones arriba/abajo (se llega con < >)
+      const up = start > 0 ? '▲' : '';
+      const down = start + 2 < rows.length ? '▼' : '';
+      return { status: { title: '' }, rows: [{ l: lines[0], r: up }, { l: lines[1], r: down }], foot: { l: s.ctx || '', c: 'USE < > TO SELECT ITEM' } };
     }
     view_WIZ() {
       const s = this.screen;

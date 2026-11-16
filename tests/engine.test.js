@@ -97,7 +97,7 @@ function pgmNet(t, i, type, hop) {
 }
 
 const dlg = (t, btn, fields = {}) => t.skl.act('dlg', { btn, fields });
-const SAT = (t) => `ETD 01 5AT900|A|${new Date(t.clock.now()).getMonth() + 1}`; // segmento SATCOM del mes
+const SAT = (t) => `ABD 02 5AT900|A|${new Date(t.clock.now()).getMonth() + 1}`; // segmento SATCOM del mes
 const SATTAG = (t) => SIM.satcomTag(t.clock.now());
 
 /** Encendido y logon en Core Library (CIK insertado, sin cambio de contraseña); la UAS se abre sola. */
@@ -262,21 +262,21 @@ test('carga KYK-13 (DS-102) desde el SKL; DS-101 comprueba el tipo; peligro de c
   t.skl.loadExtendedDb();
   t.radio.setSwitch('PT');
   t.tick(10);
-  assert.equal(fillKey(t, 'ETD 02 5AT900|A|1', 'ANDVT', 'TEK', 2, { device: 'CYZ-10 DS-101', protocol: 'DS-101' }), 'BAD');
+  assert.equal(fillKey(t, 'ABD 05 5AT900|A|1', 'ANDVT', 'TEK', 2, { device: 'CYZ-10 DS-101', protocol: 'DS-101' }), 'BAD');
   assert.equal(t.radio.keys.ANDVT.TEK[1], null);
   // protocolo distinto entre radio y SKL -> BAD FILL
   t.radio.setSwitch('PT');
   t.tick(10);
   assert.equal(fillKey(t, SAT(t), 'ANDVT', 'TEK', 3, { protocol: 'DS-101' }), 'BAD');
-  // segmento caducado (enero, RED KEY): el SKL no lo carga
+  // segmento caducado (ABD 01, enero, RED KEY): el SKL no lo carga
   t.skl.dialogs = [];
   t.skl.send = null;
-  t.skl.act('select', 'seg:ETD 01 5AT900|A|1');
+  t.skl.act('select', 'seg:ABD 01 5AT900|A|1');
   t.skl.act('cmd', 'load');
   assert.match(t.skl.dlg.text, /expired/);
   dlg(t, 'OK');
   // solo etiqueta, sin variable (KEY TAG)
-  t.skl.act('select', 'seg:ETD 60 5AT900|A|1');
+  t.skl.act('select', 'seg:ABD 60 5AT900|A|1');
   t.skl.act('cmd', 'load');
   assert.match(t.skl.dlg.text, /KEY TAG/);
   dlg(t, 'OK');
@@ -286,7 +286,8 @@ test('carga KYK-13 (DS-102) desde el SKL; DS-101 comprueba el tipo; peligro de c
   dlg(t, 'Yes');
   assert.match(t.skl.dlg.text, /deleted/);
   dlg(t, 'OK');
-  assert.equal(t.skl.keyById('ETD 01 5AT900|A|1'), undefined);
+  assert.equal(t.skl.keys.filter((k) => k.st === 'ABD 01 5AT900').length, 0); // ABD 01 entero caducado
+  assert.equal(t.skl.keys.filter((k) => k.st === 'ABD 02 5AT900').length, 12); // ABD 02 intacto
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'expired'), t).every((c) => c.ok));
   fillEnd(t);
   assert.ok(SIM.evaluateScenario(SIM.SCENARIOS.find((s) => s.id === 'fill-kyk'), t).every((c) => c.ok));
@@ -297,7 +298,7 @@ test('red LOS cifrada VINSON: CT obligatorio, clave y alcance', () => {
   sklLogin(t);
   on(t);
   t.skl.loadExtendedDb();
-  fillKey(t, 'ETD 02 5AT900|A|1', 'VINSON', 'TEK', 1);
+  fillKey(t, 'ABD 05 5AT900|A|1', 'VINSON', 'TEK', 1);
   fillEnd(t, 'PT');
   pgmNet(t, 2, 'LOS FIX FREQUENCY');
   menu(t, 'FREQ');
@@ -362,7 +363,7 @@ test('SINCGARS: loadset por ICOM desde la pestaña Plats y contacto', () => {
   dlg(t, 'Close');
   assert.equal(t.radio.screen.stage, 'DONE');
   assert.equal(t.radio.keys.SINCGARS.TSK[19].netId, 345);
-  assert.equal(t.radio.keys.VINSON.TEK[20].tag, 'ETD 11 5AT900 A-1');
+  assert.equal(t.radio.keys.VINSON.TEK[20].tag, 'ABD 11 5AT900 A-1');
   assert.ok(t.radio.todSinc);
   press(t, 'ENT');
   press(t, '9', 'ENT');
@@ -389,7 +390,7 @@ test('HAVEQUICK: MWOD del día UTC, TOD por CALL y contacto', () => {
   on(t);
   const day = new Date(t.clock.now()).getUTCDate();
   t.skl.loadExtendedDb();
-  fillKey(t, 'ETD 50 5AT900|A|1', 'HAVEQUICK', 'WOD', day);
+  fillKey(t, 'ABD 50 5AT900|A|1', 'HAVEQUICK', 'WOD', day);
   fillEnd(t, 'PT');
   t.conn.j8 = 'FLEX';
   pgmNet(t, 4, 'FREQUENCY HOPPING', 'HAVEQUICK');
@@ -460,7 +461,7 @@ test('DAMA: programación, conexión, llamada y errores 77/82', () => {
   sklLogin(t);
   on(t);
   t.skl.loadExtendedDb();
-  fillKey(t, 'ETD 07 5AT900|A|1', 'SATELLITE', 'TSK', 1);
+  fillKey(t, 'ABD 07 5AT900|A|1', 'SATELLITE', 'TSK', 1);
   t.radio.setSwitch('PT');
   t.tick(10);
   fillKey(t, SAT(t), 'ANDVT', 'TEK', 2);
@@ -577,16 +578,23 @@ test('borrados: Z-ALL (rojos), tecla ZERO (programación) y CLR (todo)', () => {
 test('SKL: logon, orden de salida, Reset Card, fallos de logon, auditoría solo SSO y apagado', () => {
   const t = setup();
   sklLogin(t);
-  // árbol Keys: un Short Title con 12 segmentos (uno por mes)
+  // árbol Keys: ABD 01 (12 meses anteriores, caducados) y ABD 02 (mes en curso y 11 siguientes)
   t.skl.act('tab', 'KEYS');
-  t.skl.act('toggle', 'st:ETD 01 5AT900');
-  t.skl.act('toggle', 'ed:ETD 01 5AT900|A');
-  const segs = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:'));
+  const sts = t.skl.visibleNodes().filter((n) => n.id.startsWith('st:')).map((n) => n.label);
+  assert.deepEqual(sts, ['ABD 01 5AT900', 'ABD 02 5AT900']);
+  t.skl.act('toggle', 'st:ABD 01 5AT900');
+  t.skl.act('toggle', 'ed:ABD 01 5AT900|A');
+  const old = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:ABD 01'));
+  assert.equal(old.length, 12);
+  assert.ok(old.every((n) => n.icon === 'RED'));
+  assert.equal(old[0].label, '11-T000-11-NOV TEK'); // noviembre del año pasado
+  t.skl.act('toggle', 'st:ABD 02 5AT900');
+  t.skl.act('toggle', 'ed:ABD 02 5AT900|A');
+  const segs = t.skl.visibleNodes().filter((n) => n.id.startsWith('seg:ABD 02'));
   assert.equal(segs.length, 12);
-  assert.equal(segs[10].label, '11-T000-11-NOV TEK');
-  assert.equal(segs[10].icon, 'YELLOW');
-  assert.equal(segs[0].icon, 'RED');
-  assert.equal(segs[11].icon, 'PENDING');
+  assert.equal(segs[0].label, '11-T000-11-NOV TEK');
+  assert.equal(segs[0].icon, 'YELLOW');
+  assert.ok(segs.slice(1).every((n) => n.icon === 'PENDING'));
   t.skl.act('open', 'seg:' + SAT(t));
   assert.equal(t.skl.dlg.type, 'SEGMENT');
   dlg(t, 'Close');
@@ -610,7 +618,7 @@ test('SKL: logon, orden de salida, Reset Card, fallos de logon, auditoría solo 
   assert.match(t.skl.dlg.text, /Card was reset/);
   dlg(t, 'OK');
   assert.equal(t.skl.loggedIn, false);
-  assert.equal(t.skl.keys.length, 12);
+  assert.equal(t.skl.keys.length, 24);
   // 10 fallos de logon seguidos borran la cuenta del usuario
   t.skl.act('cmd', 'login');
   for (let i = 0; i < 10; i++) {
@@ -672,4 +680,34 @@ test('nombre de red con entrada alfanumérica (multitecla)', () => {
   // R = 6 x4, E = 2 x3, ► , D = 2 x2  (ejemplo del manual)
   press(t, '6', '6', '6', '6', '2', '2', '2', 'RIGHT', '2', '2', 'ENT');
   assert.equal(t.radio.nets[6].name, 'RED');
+});
+
+test('PGM NET: ACTIVATE IN LIST? sale en pantalla en cuanto se elige la red; CLR en LD nunca sale del menú FILL', () => {
+  const t = setup();
+  on(t, 'CT');
+  press(t, '8');
+  menu(t, 'NORM');
+  menu(t, 'NET');
+  num(t, '03');
+  assert.equal(t.radio.screen.id, 'WIZ');
+  assert.equal(SIM.plain(t.radio.display().text[1]).trim(), 'ACTIVATE IN LIST?');
+  back(t);
+  assert.equal(t.radio.screen.title, 'NORM'); // CLR vuelve al menú NORM
+  // menú de la red: indica con ▼ que hay más opciones (NAME)
+  menu(t, 'NET');
+  num(t, '03');
+  choose(t, 'YES');
+  choose(t, 'LOS FIX FREQUENCY');
+  assert.equal(t.radio.display().rows[1].r, '▼');
+  menu(t, 'NAME');
+  assert.equal(t.radio.screen.id, 'WIZ');
+  // LD: muchos CLR siguen en el menú FILL
+  press(t, 'PRE+');
+  t.radio.setSwitch('LD');
+  t.tick(10);
+  press(t, 'ENT'); // FILL DEVICE -> CRYPTO TYPE
+  back(t, 8);
+  assert.equal(t.radio.screen.id, 'WIZ');
+  assert.equal(t.radio.screen.title, 'FILL MENU');
+  assert.equal(SIM.plain(t.radio.display().text[1]).trim(), 'FILL DEVICE');
 });

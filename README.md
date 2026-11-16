@@ -95,8 +95,10 @@ equipo; el botón «Reiniciar todo» vuelve al estado inicial.
 - **Menú File** (cambia según la pestaña): Delete Key Tag / Edition / Segment, Delete Database…, **Transmit ▸** (Load…, Load Modern Keys…, **Load Selected Keys…**, Load Selected Locations…, Load EPLRS…, Load PRC-137…, Load Benign Fill…, Load Mode 5 IFF ▸, Database…, ECU Commands…), Receive, OTAD, Create Key Tags…, Assign, Save Database… y Exit.
 - **Menú View**: Current Selection, Keys ▸ Expired Keys…, Summary Status…, Refresh, Expand Tree y Tree ▸.
 - **Menú Settings**: Date Load, Options, Filter, Show All y Font.
-- **Base de datos por defecto**: un solo Short Title, **`ETD 01 5AT900`**, edición `A`, con **12 segmentos SATCOM mensuales** (`1-T000-1-JAN TEK` … `12-T000-12-DEC TEK`). Cada segmento es efectivo del día 1 al último día de su mes; el del mes en curso es el que usan las redes SATCOM y DAMA.
-- **BD ampliada** (botón «Cargar BD ampliada en el SKL» en la tarjeta de ejercicios): añade TEK LOS VINSON (ETD 02), un segmento caducado (ETD 03), TSK EOW (ETD 07), MWOD (ETD 50), una KEY TAG sin variable (ETD 60), KEK (ETD 04) y el loadset **RT1 PRC117F** (Plats / Eqs) con TEK, KEK y hopsets SINCGARS.
+- **Base de datos por defecto** (sigla **ABD**, cuenta 5AT900): dos Short Titles SATCOM de 12 segmentos mensuales cada uno (el número de segmento es el del mes: `11-T000-11-NOV TEK`):
+  - **`ABD 01 5AT900`**: los 12 meses anteriores, todas **caducadas** (RED KEY), para practicar Expired Keys.
+  - **`ABD 02 5AT900`**: el mes en curso (llave amarilla, la que usan las redes SATCOM y DAMA) y los 11 siguientes.
+- **BD ampliada** (botón «Cargar BD ampliada en el SKL» en la tarjeta de ejercicios): añade TEK LOS VINSON (ABD 05), un segmento caducado (ABD 06), TSK EOW (ABD 07), MWOD (ABD 50), una KEY TAG sin variable (ABD 60), KEK (ABD 04) y el loadset **RT1 PRC117F** (Plats / Eqs) con TEK, KEK y hopsets SINCGARS.
 - **Carga de claves** (como en el TM):
   1. **Key Load Select Keys**: casillas, Select All / Deselect All / Up / Down.
   2. **Key Load Settings**: Protocol (DS-102 / DS-101 / RS-232), Activate Mode (DS-102, KYK-13, KYX-15, KEMPLE, KOI-18, NCD LD), Bus Address, Baud Rate, Send WakeUp, Send Tag, Seconds, Mode (Fill / Issue) y Timeout.
@@ -115,11 +117,11 @@ Con «Ayudas del instructor», el registro explica por qué no hubo respuesta.
 | Estación | Red |
 |---|---|
 | Halcón 6 | LOS 45,50000 MHz FM, PT, squelch TONE, 3 km |
-| Cóndor 3 | LOS 62,75000 MHz FM, CT VINSON (ETD 02 5AT900, BD ampliada), 15 km |
-| Jaguar 1 | SINCGARS F345 (loadset RT1 PRC117F, hopset ETD 21), VINSON (ETD 11 5AT900), 8 km |
-| Águila 2 | HAVEQUICK II red 00.300, MWOD ETD 50 5AT900, TOD, 40 km en vuelo |
-| Base Centauro | SATCOM dedicado código 150 (5 kHz), CT ANDVT con el segmento del mes de ETD 01 5AT900 |
-| Nodo Orión | DAMA canal 054 (25 kHz AC), red 51234, TBA 10452, TSK ETD 07 5AT900, ANDVT con el segmento del mes de ETD 01 5AT900, código 060 |
+| Cóndor 3 | LOS 62,75000 MHz FM, CT VINSON (ABD 05 5AT900, BD ampliada), 15 km |
+| Jaguar 1 | SINCGARS F345 (loadset RT1 PRC117F, hopset ABD 21), VINSON (ABD 11 5AT900), 8 km |
+| Águila 2 | HAVEQUICK II red 00.300, MWOD ABD 50 5AT900, TOD, 40 km en vuelo |
+| Base Centauro | SATCOM dedicado código 150 (5 kHz), CT ANDVT con el segmento del mes de ABD 02 5AT900 |
+| Nodo Orión | DAMA canal 054 (25 kHz AC), red 51234, TBA 10452, TSK ABD 07 5AT900, ANDVT con el segmento del mes de ABD 02 5AT900, código 060 |
 
 Satélite de entrenamiento: azimut 135°, elevación 40°.
 
@@ -145,7 +147,7 @@ Cada ejercicio muestra sus pasos y comprueba los objetivos en vivo.
 1. **SKL** (CIK ya insertado): encender, Logon `OPERADOR` / `Operador1`, OK en Startup Information. La UAS se abre sola.
 2. **Radio**: interruptor en **LD**. Solo entonces conectar el SKL a **J1** (antes, retirar el H-250).
 3. **Radio**: `FILL DEVICE` KYK-13 > `CRYPTO TYPE` ANDVT > `SELECT KEY TYPE` TEK > `KEY NUMBER` 01 > «PRESS ENTER TO INITIATE».
-4. **SKL**: File > Transmit > **Load Selected Keys…** > marcar el segmento del mes en curso de `ETD 01 5AT900` > OK > Key Load Settings: Protocol **DS-102**, Activate Mode **DS-102** o **KYK-13** > OK > OK en «Ready to Send Key».
+4. **SKL**: File > Transmit > **Load Selected Keys…** > marcar el segmento del mes en curso de `ABD 02 5AT900` > OK > Key Load Settings: Protocol **DS-102**, Activate Mode **DS-102** o **KYK-13** > OK > OK en «Ready to Send Key».
 5. Con la ventana Status en «Press INITIATE Button....», pulsar **ENT** en la radio. Esperar «FILL DONE» en la radio y «Operation Successful.» en el SKL.
 6. «MORE FILL DATA?»: YES para cargar otra clave o NO para terminar.
 7. «CHANGE SW FROM LD»: **desconectar primero el SKL**, luego girar a CT.

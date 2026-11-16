@@ -4,7 +4,7 @@
   const SIM = window.SIM;
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
-  const STORE = 'sim-prc117f-skl-v4';
+  const STORE = 'sim-prc117f-skl-v5';
 
   const DEFAULT_CONN = { j1: 'NONE', j5: false, j8: 'NONE', az: 0, el: 0, cik: true };
   const conn = Object.assign({}, DEFAULT_CONN);

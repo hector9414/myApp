@@ -18,8 +18,9 @@
  *   - Loadset por ICOM: SINCGARS Mode > Load ECU Wizard (Connect To,
  *     Profiles) > Status («Press LOAD Button.») > «Re-load equipment?».
  *
- * La base de datos por defecto contiene un único Short Title SATCOM con
- * 12 segmentos (uno por mes). Todo el material es ficticio (ETD).
+ * La base de datos por defecto contiene dos Short Titles SATCOM (sigla ABD),
+ * uno caducado y otro vigente, de 12 segmentos mensuales cada uno.
+ * Todo el material es ficticio.
  */
 (function (g) {
   'use strict';
@@ -27,10 +28,11 @@
   const DAY = 86400000;
   const MAX_FAILS = 10; // manual: 10 fallos seguidos borran la cuenta (SSO: zeroize)
   const ACCOUNT = '5AT900'; // cuenta COMSEC ficticia
-  const SAT_ST = `ETD 01 ${ACCOUNT}`;
+  const SAT_ST = `ABD 02 ${ACCOUNT}`; // SATCOM vigente
+  const EXP_ST = `ABD 01 ${ACCOUNT}`; // SATCOM caducado
   const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-  /** Etiqueta con la que la radio identifica un segmento: «ETD 01 5AT900 A-11». */
+  /** Etiqueta con la que la radio identifica un segmento: «ABD 02 5AT900 A-11». */
   const tagOf = (st, ed, seg) => `${st} ${ed}-${seg}`;
   /** Segmento SATCOM vigente en una fecha (uno por mes). */
   SIM.satcomTag = (t) => tagOf(SAT_ST, 'A', new Date(t).getMonth() + 1);
@@ -41,26 +43,38 @@
     }, o, { id: `${o.st}|${o.edition || 'A'}|${o.segment || 1}`, tag: tagOf(o.st, o.edition || 'A', o.segment || 1) });
   }
 
-  /** Base de datos por defecto: un Short Title SATCOM con 12 segmentos (ENE-DIC del año en curso). */
+  /**
+   * Base de datos por defecto: dos Short Titles SATCOM de 12 segmentos mensuales
+   * (el número de segmento es el del mes: 1 = JAN … 12 = DEC):
+   *   - ABD 01 5AT900: los 12 meses anteriores al actual (todas caducadas, RED KEY).
+   *   - ABD 02 5AT900: el mes en curso y los 11 siguientes (vigente + futuras).
+   */
   function defaultKeys(now) {
-    const y = new Date(now).getFullYear();
-    return MONTHS.map((m, i) => seg({
-      st: SAT_ST, segment: i + 1, desig: 'T000', suffix: String(i + 1), text: `${m} TEK`, bank: 'SATCOM', type: 'TEK',
-      desc: `TEK SATCOM del mes ${m} (VINSON / ANDVT)`,
-      eff: new Date(y, i, 1).getTime(), exp: new Date(y, i + 1, 1).getTime() - 1,
-    }));
+    const d0 = new Date(now);
+    const y = d0.getFullYear();
+    const m0 = d0.getMonth();
+    const year = (st, from) => Array.from({ length: 12 }, (_, k) => {
+      const d = new Date(y, m0 + from + k, 1);
+      const m = d.getMonth();
+      return seg({
+        st, segment: m + 1, desig: 'T000', suffix: String(m + 1), text: `${MONTHS[m]} TEK`, bank: 'SATCOM', type: 'TEK',
+        desc: `TEK SATCOM ${MONTHS[m]} ${d.getFullYear()} (VINSON / ANDVT)`,
+        eff: d.getTime(), exp: new Date(d.getFullYear(), m + 1, 1).getTime() - 1,
+      });
+    });
+    return [...year(EXP_ST, -12), ...year(SAT_ST, 0)];
   }
 
   /** Material adicional para los demás ejercicios (botón del instructor). */
   function extendedKeys(now) {
     const d = (n) => now + n * DAY;
     return [
-      seg({ st: `ETD 02 ${ACCOUNT}`, desig: 'T000', suffix: '2', text: 'LOS TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS de Cóndor 3 (VINSON)', eff: d(-10), exp: d(20) }),
-      seg({ st: `ETD 03 ${ACCOUNT}`, desig: 'T000', suffix: '3', text: 'OLD TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS, periodo anterior', eff: d(-40), exp: d(-2) }),
-      seg({ st: `ETD 07 ${ACCOUNT}`, desig: 'S000', suffix: '7', text: 'EOW TSK', bank: 'SATELLITE', type: 'TSK', desc: 'Orderwire DAMA', eff: d(-7), exp: d(23) }),
-      seg({ st: `ETD 50 ${ACCOUNT}`, desig: 'W000', suffix: '11', text: 'MWOD', bank: 'HAVEQUICK', type: 'WOD', desc: 'MWOD HAVEQUICK del mes', eff: d(-10), exp: d(30) }),
-      seg({ st: `ETD 60 ${ACCOUNT}`, desig: 'T000', suffix: '60', text: 'DATA TEK', bank: 'KG-84', type: 'TEK', desc: 'KG-84 (falta la variable)', eff: d(-1), exp: d(29), variable: false }),
-      seg({ st: `ETD 04 ${ACCOUNT}`, desig: 'KAAA', suffix: '3', text: '1QTR KEK', bank: 'VINSON', type: 'KEK', desc: 'KEK VINSON', eff: d(-30), exp: d(60) }),
+      seg({ st: `ABD 05 ${ACCOUNT}`, desig: 'T000', suffix: '2', text: 'LOS TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS de Cóndor 3 (VINSON)', eff: d(-10), exp: d(20) }),
+      seg({ st: `ABD 06 ${ACCOUNT}`, desig: 'T000', suffix: '3', text: 'OLD TEK', bank: 'VINSON', type: 'TEK', desc: 'Red LOS, periodo anterior', eff: d(-40), exp: d(-2) }),
+      seg({ st: `ABD 07 ${ACCOUNT}`, desig: 'S000', suffix: '7', text: 'EOW TSK', bank: 'SATELLITE', type: 'TSK', desc: 'Orderwire DAMA', eff: d(-7), exp: d(23) }),
+      seg({ st: `ABD 50 ${ACCOUNT}`, desig: 'W000', suffix: '11', text: 'MWOD', bank: 'HAVEQUICK', type: 'WOD', desc: 'MWOD HAVEQUICK del mes', eff: d(-10), exp: d(30) }),
+      seg({ st: `ABD 60 ${ACCOUNT}`, desig: 'T000', suffix: '60', text: 'DATA TEK', bank: 'KG-84', type: 'TEK', desc: 'KG-84 (falta la variable)', eff: d(-1), exp: d(29), variable: false }),
+      seg({ st: `ABD 04 ${ACCOUNT}`, desig: 'KAAA', suffix: '3', text: '1QTR KEK', bank: 'VINSON', type: 'KEK', desc: 'KEK VINSON', eff: d(-30), exp: d(60) }),
     ];
   }
 
@@ -69,10 +83,10 @@
       name: 'RT1 PRC117F',
       type: 'PRC-117F',
       platform: 'CDR HMMV',
-      teks: [11, 12, 13, 14, 15].map((n) => `ETD ${n} ${ACCOUNT} A-1`),
-      kek: `ETD 16 ${ACCOUNT} A-1`,
-      coldStart: `ETD 20 ${ACCOUNT} A-1`,
-      hopsets: [345, 346, 400, 401, 500, 501].map((netId, i) => ({ tag: `ETD ${21 + i} ${ACCOUNT} A-1`, netId })),
+      teks: [11, 12, 13, 14, 15].map((n) => `ABD ${n} ${ACCOUNT} A-1`),
+      kek: `ABD 16 ${ACCOUNT} A-1`,
+      coldStart: `ABD 20 ${ACCOUNT} A-1`,
+      hopsets: [345, 346, 400, 401, 500, 501].map((netId, i) => ({ tag: `ABD ${21 + i} ${ACCOUNT} A-1`, netId })),
     };
   }
 
@@ -1076,13 +1090,13 @@
     // ---------------------------------------------------------------- persistencia
     serialize() {
       return {
-        v: 4, card: this.card, accounts: this.accounts, keys: this.keys, loadset: this.loadset, extended: this.extended,
+        v: 5, card: this.card, accounts: this.accounts, keys: this.keys, loadset: this.loadset, extended: this.extended,
         audit: this.audit.slice(0, 150), loadSettings: this.loadSettings, coreProtocol: this.coreProtocol,
         displayEvery: this.displayEvery, battery: this.battery,
       };
     }
     load(o) {
-      if (!o || typeof o !== 'object' || o.v !== 4) return;
+      if (!o || typeof o !== 'object' || o.v !== 5) return;
       if (o.card === 'UNINIT' || o.card === 'READY') this.card = o.card;
       if (o.accounts && typeof o.accounts === 'object') this.accounts = o.accounts;
       if (Array.isArray(o.keys)) this.keys = o.keys.filter((k) => k && k.tag && k.st);
